@@ -1,0 +1,19 @@
+{
+  "experiments": [
+    {
+      "scenarioId": "s1-read-only",
+      "states": ["small", "medium", "large"],
+      "concurrency": [1, 8, 32]
+    },
+    {
+      "scenarioId": "s2-write",
+      "states": ["empty", "small"],
+      "concurrency": [1, 8, 32]
+    },
+    {
+      "scenarioId": "s3-mixed-crud",
+      "states": ["medium"],
+      "concurrency": [8, 32]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "id": "s1-read-only",
+  "name": "S1 Read-Only Baseline",
+  "description": "Read-dominated workload with collection and single-resource reads.",
+  "operations": [
+    {
+      "name": "listTodos",
+      "method": "GET",
+      "path": "/todos",
+      "weight": 80
+    },
+    {
+      "name": "getTodoById",
+      "method": "GET",
+      "path": "/todos/:id",
+      "weight": 20
+    }
+  ]
+}

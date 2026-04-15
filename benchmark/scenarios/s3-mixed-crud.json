@@ -1,0 +1,47 @@
+{
+  "id": "s3-mixed-crud",
+  "name": "S3 Mixed CRUD",
+  "description": "Mixed CRUD workload on a medium data state.",
+  "operations": [
+    {
+      "name": "listTodos",
+      "method": "GET",
+      "path": "/todos",
+      "weight": 50
+    },
+    {
+      "name": "getTodoById",
+      "method": "GET",
+      "path": "/todos/:id",
+      "weight": 20
+    },
+    {
+      "name": "createTodo",
+      "method": "POST",
+      "path": "/todos",
+      "weight": 15,
+      "bodyTemplate": {
+        "title": "{{title}}",
+        "completed": false,
+        "order": "{{order}}"
+      }
+    },
+    {
+      "name": "patchTodo",
+      "method": "PATCH",
+      "path": "/todos/:id",
+      "weight": 10,
+      "bodyTemplate": {
+        "title": "{{title}}",
+        "completed": "{{completed}}",
+        "order": "{{order}}"
+      }
+    },
+    {
+      "name": "deleteTodo",
+      "method": "DELETE",
+      "path": "/todos/:id",
+      "weight": 5
+    }
+  ]
+}

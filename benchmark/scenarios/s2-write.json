@@ -1,0 +1,18 @@
+{
+  "id": "s2-write",
+  "name": "S2 Write Baseline",
+  "description": "Pure create workload.",
+  "operations": [
+    {
+      "name": "createTodo",
+      "method": "POST",
+      "path": "/todos",
+      "weight": 100,
+      "bodyTemplate": {
+        "title": "{{title}}",
+        "completed": false,
+        "order": "{{order}}"
+      }
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "category": "validation",
+  "backend": "express",
+  "targetBaseUrl": "http://127.0.0.1:3001",
+  "selectedExperimentCount": 1,
+  "appliedFilters": {
+    "scenario": "s2-write",
+    "state": "empty",
+    "concurrency": 1
+  },
+  "benchmarkPolicy": {
+    "warmupRuns": 1,
+    "measuredRuns": 5,
+    "warmupDurationSeconds": 30,
+    "measuredDurationSeconds": 60,
+    "resetBeforeEachRun": true,
+    "aggregation": "median",
+    "metrics": [
+      "throughput",
+      "latency_median",
+      "latency_p90",
+      "latency_p99",
+      "error_rate"
+    ]
+  },
+  "startedAt": "2026-04-09T12:57:19.953Z",
+  "finishedAt": "2026-04-09T13:02:51.997Z",
+  "wallClockDurationSeconds": 332.044
+}

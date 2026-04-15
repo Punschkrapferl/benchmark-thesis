@@ -1,0 +1,2 @@
+backend,scenarioId,stateName,concurrency,throughput,latency_median,latency_p90,latency_p99,error_rate
+springboot,s3-mixed-crud,medium,8,249.72,272,650,1146,0.012410189418680601

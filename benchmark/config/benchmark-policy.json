@@ -1,0 +1,15 @@
+{
+  "warmupRuns": 1,
+  "measuredRuns": 5,
+  "warmupDurationSeconds": 30,
+  "measuredDurationSeconds": 60,
+  "resetBeforeEachRun": true,
+  "aggregation": "median",
+  "metrics": [
+    "throughput",
+    "latency_median",
+    "latency_p90",
+    "latency_p99",
+    "error_rate"
+  ]
+}

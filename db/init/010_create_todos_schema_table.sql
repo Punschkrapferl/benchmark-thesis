@@ -1,0 +1,39 @@
+\connect todo_express
+
+CREATE TABLE IF NOT EXISTS todos (
+  id SERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  completed BOOLEAN NOT NULL DEFAULT FALSE,
+  "order" INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+\connect todo_springboot
+
+CREATE TABLE IF NOT EXISTS todos (
+  id SERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  completed BOOLEAN NOT NULL DEFAULT FALSE,
+  "order" INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+\connect todo_aspnet
+
+CREATE TABLE IF NOT EXISTS todos (
+  id SERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  completed BOOLEAN NOT NULL DEFAULT FALSE,
+  "order" INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+\connect todo_fastapi
+
+CREATE TABLE IF NOT EXISTS todos (
+  id SERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  completed BOOLEAN NOT NULL DEFAULT FALSE,
+  "order" INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

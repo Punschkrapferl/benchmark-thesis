@@ -1,0 +1,29 @@
+{
+  "category": "validation",
+  "backend": "springboot",
+  "targetBaseUrl": "http://127.0.0.1:8080",
+  "selectedExperimentCount": 1,
+  "appliedFilters": {
+    "scenario": "s2-write",
+    "state": "empty",
+    "concurrency": 1
+  },
+  "benchmarkPolicy": {
+    "warmupRuns": 1,
+    "measuredRuns": 5,
+    "warmupDurationSeconds": 30,
+    "measuredDurationSeconds": 60,
+    "resetBeforeEachRun": true,
+    "aggregation": "median",
+    "metrics": [
+      "throughput",
+      "latency_median",
+      "latency_p90",
+      "latency_p99",
+      "error_rate"
+    ]
+  },
+  "startedAt": "2026-04-08T21:28:58.491Z",
+  "finishedAt": "2026-04-08T21:34:30.613Z",
+  "wallClockDurationSeconds": 332.122
+}

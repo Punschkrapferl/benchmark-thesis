@@ -1,0 +1,22 @@
+{
+  "empty": {
+    "rowCount": 0,
+    "idMin": null,
+    "idMax": null
+  },
+  "small": {
+    "rowCount": 100,
+    "idMin": 1,
+    "idMax": 100
+  },
+  "medium": {
+    "rowCount": 10000,
+    "idMin": 1,
+    "idMax": 10000
+  },
+  "large": {
+    "rowCount": 100000,
+    "idMin": 1,
+    "idMax": 100000
+  }
+}

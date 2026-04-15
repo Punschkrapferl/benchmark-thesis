@@ -1,0 +1,119 @@
+# --------------------------------------------------
+# OS / Editor
+# --------------------------------------------------
+.DS_Store
+Thumbs.db
+
+.vscode/*
+!.vscode/settings.json
+
+.idea/
+*.swp
+*.swo
+
+# --------------------------------------------------
+# Runtime / logs
+# --------------------------------------------------
+.runtime/
+*.log
+logs/
+*.pid
+*.pid.lock
+
+# --------------------------------------------------
+# Environment / secrets
+# --------------------------------------------------
+.env
+.env.*
+!.env.example
+!.env*.example
+
+# --------------------------------------------------
+# Node.js
+# --------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Package manager caches
+.npm/
+.pnpm-store/
+.yarn/
+.yarn-cache/
+
+# Optional temporary benchmark artifacts
+*.tmp
+*.temp
+
+# --------------------------------------------------
+# Spring Boot / Java / Gradle
+# --------------------------------------------------
+.gradle/
+build/
+out/
+bin/
+
+*.class
+*.jar
+*.war
+*.ear
+
+# Keep Spring Boot Gradle wrapper tracked
+!backends/springboot/gradle/wrapper/gradle-wrapper.jar
+!backends/springboot/gradle/wrapper/gradle-wrapper.properties
+
+# Java crash logs
+hs_err_pid*
+replay_pid*
+
+# --------------------------------------------------
+# ASP.NET / C#
+# --------------------------------------------------
+backends/aspnet/bin/
+backends/aspnet/obj/
+*.user
+*.rsuser
+*.suo
+
+# --------------------------------------------------
+# Python / FastAPI
+# --------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.python-version
+
+.venv/
+venv/
+env/
+ENV/
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --------------------------------------------------
+# Test / coverage artifacts
+# --------------------------------------------------
+coverage/
+.coverage.*
+lcov.info
+
+# --------------------------------------------------
+# Archives / local exports
+# --------------------------------------------------
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+
+# --------------------------------------------------
+# Misc local generated files
+# --------------------------------------------------
+*.sqlite
+*.sqlite3
