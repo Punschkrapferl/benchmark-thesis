@@ -1,2 +1,0 @@
-backend,scenarioId,stateName,concurrency,throughput,latency_median,latency_p90,latency_p99,error_rate
-aspnet,s3-mixed-crud,medium,8,203.14,33,79,122,0.010080314702507786

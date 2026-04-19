@@ -1,2 +1,0 @@
-backend,scenarioId,stateName,concurrency,throughput,latency_median,latency_p90,latency_p99,error_rate
-fastapi,s4-stress,medium,16,16.32,888,1494,2206,0.0010050251256281408

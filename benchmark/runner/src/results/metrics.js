@@ -1,7 +1,17 @@
+// Return the number if it is a valid finite numeric value;
+// otherwise return 0 as a safe fallback.
 function safeNumber(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
+// Extract the benchmark metrics we care about from raw autocannon output.
+//
+// The selected metrics are:
+// - throughput
+// - latency median (p50)
+// - latency p90
+// - latency p99
+// - error rate
 function extractMetricsFromAutocannonResult(rawResult) {
   const throughput = safeNumber(rawResult.requests?.average);
   const latencyMedian = safeNumber(rawResult.latency?.p50);
@@ -15,8 +25,11 @@ function extractMetricsFromAutocannonResult(rawResult) {
   const completedRequests = safeNumber(rawResult.requests?.total);
   const sentRequests = safeNumber(rawResult.requests?.sent);
 
+  // Count all request failures together.
   const failureCount = errors + timeouts + non2xx;
 
+  // Use the best available denominator when computing the error rate.
+  // Prefer completed requests, then sent requests, then failure count if necessary.
   const denominator =
     completedRequests > 0
       ? completedRequests

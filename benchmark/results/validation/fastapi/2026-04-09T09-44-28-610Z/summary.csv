@@ -1,2 +1,0 @@
-backend,scenarioId,stateName,concurrency,throughput,latency_median,latency_p90,latency_p99,error_rate
-fastapi,s2-write,small,8,1565.04,4,5,10,0

@@ -1,3 +1,5 @@
+// Resolve the base URL for the selected backend.
+// The benchmark runner uses this to know where to send benchmark traffic.
 function resolveTarget(backend) {
   const targets = {
     express: {

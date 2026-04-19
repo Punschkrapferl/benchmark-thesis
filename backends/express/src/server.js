@@ -4,6 +4,7 @@ import { closeDatabasePool, testDatabaseConnection } from './config/database.js'
 
 let server;
 
+// Start the backend only after confirming that PostgreSQL is reachable.
 async function startServer() {
   await testDatabaseConnection();
 
@@ -12,6 +13,8 @@ async function startServer() {
   });
 }
 
+// Graceful shutdown handler.
+// Closes the HTTP server first, then closes the database pool.
 async function shutdown(signal) {
   console.log(`${signal} received, shutting down...`);
 
@@ -36,9 +39,11 @@ async function shutdown(signal) {
   }
 }
 
+// Handle termination signals from the OS or container runtime.
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
+// Start the application and fail fast if startup cannot complete.
 startServer().catch((error) => {
   console.error('Failed to start server:', error);
   process.exit(1);

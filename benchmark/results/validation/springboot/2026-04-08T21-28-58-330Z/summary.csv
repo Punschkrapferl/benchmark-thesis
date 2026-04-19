@@ -1,2 +1,0 @@
-backend,scenarioId,stateName,concurrency,throughput,latency_median,latency_p90,latency_p99,error_rate
-springboot,s1-read-only,medium,8,183.32,277,593,1112,0

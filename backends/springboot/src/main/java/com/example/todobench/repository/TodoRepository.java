@@ -1,16 +1,30 @@
 package com.example.todobench.repository;
 
 import com.example.todobench.model.Todo;
+import java.util.List;
+import java.util.Optional;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
-import java.util.List;
-import java.util.Optional;
-
+/**
+ * Repository layer for direct PostgreSQL access.
+ *
+ * This stays intentionally simple:
+ * - plain SQL
+ * - no ORM
+ * - predictable query behavior
+ * - easier parity with the Express repository
+ */
 @Repository
 public class TodoRepository {
 
+        /**
+         * Map one SQL row into the internal Todo model.
+         *
+         * The database column name "order" is aliased because ORDER is a reserved SQL
+         * keyword.
+         */
         private static final RowMapper<Todo> TODO_ROW_MAPPER = (rs, rowNum) -> new Todo(
                         rs.getLong("id"),
                         rs.getString("title"),
@@ -23,6 +37,9 @@ public class TodoRepository {
                 this.jdbcClient = jdbcClient;
         }
 
+        /**
+         * Return all todos ordered by ID ascending.
+         */
         public List<Todo> findAll() {
                 return jdbcClient.sql("""
                                 SELECT id, title, completed, "order" AS display_order
@@ -33,6 +50,9 @@ public class TodoRepository {
                                 .list();
         }
 
+        /**
+         * Return one todo by ID if it exists.
+         */
         public Optional<Todo> findById(Long id) {
                 return jdbcClient.sql("""
                                 SELECT id, title, completed, "order" AS display_order
@@ -44,6 +64,9 @@ public class TodoRepository {
                                 .optional();
         }
 
+        /**
+         * Insert a new todo and return the inserted row.
+         */
         public Todo create(Todo todo) {
                 return jdbcClient.sql("""
                                 INSERT INTO todos (title, completed, "order")
@@ -58,6 +81,13 @@ public class TodoRepository {
                                 .single();
         }
 
+        /**
+         * Update a todo and return the updated row.
+         *
+         * The service layer already resolved patch semantics before this method is
+         * called,
+         * so the repository can perform a straightforward full-row update.
+         */
         public Optional<Todo> update(Long id, Todo todo) {
                 return jdbcClient.sql("""
                                 UPDATE todos
@@ -74,6 +104,11 @@ public class TodoRepository {
                                 .optional();
         }
 
+        /**
+         * Delete one todo by ID.
+         *
+         * Return true if a row was deleted, false otherwise.
+         */
         public boolean deleteById(Long id) {
                 int affectedRows = jdbcClient.sql("""
                                 DELETE FROM todos
@@ -85,9 +120,13 @@ public class TodoRepository {
                 return affectedRows > 0;
         }
 
+        /**
+         * Delete all todos.
+         */
         public void deleteAll() {
                 jdbcClient.sql("""
                                 DELETE FROM todos
-                                """).update();
+                                """)
+                                .update();
         }
 }

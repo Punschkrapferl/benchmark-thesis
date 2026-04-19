@@ -1,2 +1,0 @@
-backend,scenarioId,stateName,concurrency,throughput,latency_median,latency_p90,latency_p99,error_rate
-fastapi,s1-read-only,small,1,686.25,1,1,2,0

@@ -1,4 +1,6 @@
 {
     "java.configuration.updateBuildConfiguration": "interactive",
-    "git.ignoreLimitWarning": true
+    "git.ignoreLimitWarning": true,
+    "python.defaultInterpreterPath": "./backends/fastapi/.venv/bin/python",
+    "java.compile.nullAnalysis.mode": "disabled"
 }

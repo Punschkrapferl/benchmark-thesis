@@ -8,6 +8,8 @@ import {
 } from '../services/todo-service.js';
 import { serializeTodo, serializeTodos } from '../utils/todo-serializer.js';
 
+// Controller for GET /todos
+// Fetches all todos and returns them in the common API response format.
 export async function getTodosHandler(req, res, next) {
   try {
     const todos = await listTodos();
@@ -17,6 +19,8 @@ export async function getTodosHandler(req, res, next) {
   }
 }
 
+// Controller for GET /todos/:id
+// Fetches a single todo by ID.
 export async function getTodoByIdHandler(req, res, next) {
   try {
     const todo = await getTodoById(req.params.id);
@@ -26,6 +30,8 @@ export async function getTodoByIdHandler(req, res, next) {
   }
 }
 
+// Controller for POST /todos
+// Creates a new todo from the JSON body.
 export async function createTodoHandler(req, res, next) {
   try {
     const todo = await createNewTodo(req.body);
@@ -39,6 +45,8 @@ export async function createTodoHandler(req, res, next) {
   }
 }
 
+// Controller for PATCH /todos/:id
+// Applies a partial update to an existing todo.
 export async function patchTodoHandler(req, res, next) {
   try {
     const todo = await patchTodo(req.params.id, req.body);
@@ -48,6 +56,8 @@ export async function patchTodoHandler(req, res, next) {
   }
 }
 
+// Controller for DELETE /todos/:id
+// Deletes one todo.
 export async function deleteTodoHandler(req, res, next) {
   try {
     await removeTodo(req.params.id);
@@ -57,6 +67,8 @@ export async function deleteTodoHandler(req, res, next) {
   }
 }
 
+// Controller for DELETE /todos
+// Deletes all todos.
 export async function deleteTodosHandler(req, res, next) {
   try {
     await removeAllTodos();

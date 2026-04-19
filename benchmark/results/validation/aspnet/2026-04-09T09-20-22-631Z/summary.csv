@@ -1,2 +1,0 @@
-backend,scenarioId,stateName,concurrency,throughput,latency_median,latency_p90,latency_p99,error_rate
-aspnet,s4-stress,medium,16,202,68,139,209,0.01010924506766672

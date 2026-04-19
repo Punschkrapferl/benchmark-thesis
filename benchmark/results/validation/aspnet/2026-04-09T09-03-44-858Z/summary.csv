@@ -1,2 +1,0 @@
-backend,scenarioId,stateName,concurrency,throughput,latency_median,latency_p90,latency_p99,error_rate
-aspnet,s2-write,empty,1,1575.75,0,0,0,0

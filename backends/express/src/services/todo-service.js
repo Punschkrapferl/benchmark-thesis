@@ -7,6 +7,8 @@ import {
   updateTodo
 } from '../repositories/todo-repository.js';
 
+// Custom application error type.
+// Used to return meaningful HTTP status codes from business logic.
 class AppError extends Error {
   constructor(statusCode, message) {
     super(message);
@@ -15,6 +17,7 @@ class AppError extends Error {
   }
 }
 
+// Validate that the ID is a positive integer.
 function assertIntegerId(id) {
   const numericId = Number(id);
 
@@ -33,6 +36,7 @@ function isInteger(value) {
   return Number.isInteger(value);
 }
 
+// Validate POST payload for todo creation.
 function validateCreatePayload(payload) {
   if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
     throw new AppError(400, 'Request body must be a JSON object');
@@ -61,6 +65,7 @@ function validateCreatePayload(payload) {
   };
 }
 
+// Validate PATCH payload for partial updates.
 function validatePatchPayload(payload) {
   if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
     throw new AppError(400, 'Request body must be a JSON object');
@@ -97,10 +102,12 @@ function validatePatchPayload(payload) {
   };
 }
 
+// Return all todos.
 export async function listTodos() {
   return findAllTodos();
 }
 
+// Return one todo or raise 404 if it does not exist.
 export async function getTodoById(id) {
   const todoId = assertIntegerId(id);
   const todo = await findTodoById(todoId);
@@ -112,11 +119,13 @@ export async function getTodoById(id) {
   return todo;
 }
 
+// Validate and create a new todo.
 export async function createNewTodo(payload) {
   const validated = validateCreatePayload(payload);
   return createTodo(validated);
 }
 
+// Validate ID and payload, then update one todo.
 export async function patchTodo(id, payload) {
   const todoId = assertIntegerId(id);
   const validated = validatePatchPayload(payload);
@@ -129,6 +138,7 @@ export async function patchTodo(id, payload) {
   return updated;
 }
 
+// Delete one todo by ID or raise 404 if it does not exist.
 export async function removeTodo(id) {
   const todoId = assertIntegerId(id);
   const deleted = await deleteTodoById(todoId);
@@ -138,6 +148,7 @@ export async function removeTodo(id) {
   }
 }
 
+// Delete all todos.
 export async function removeAllTodos() {
   await deleteAllTodos();
 }

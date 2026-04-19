@@ -2,6 +2,8 @@ const http = require("http");
 const { loadConfig } = require("./config-loader");
 const { createScenarioRuntime } = require("./workload/scenario-runtime");
 
+// Send one HTTP request manually using Node's built-in http module.
+// This is only a debug/helper script, not part of the main benchmark execution.
 function sendRequest({ baseUrl, requestConfig }) {
   return new Promise((resolve, reject) => {
     const url = new URL(baseUrl);
@@ -44,6 +46,9 @@ function sendRequest({ baseUrl, requestConfig }) {
   });
 }
 
+// Small debugging entry point.
+// It loads one scenario and one state, generates requests, sends them,
+// and prints both the generated request and the response preview.
 async function main() {
   const config = loadConfig();
 
@@ -58,6 +63,7 @@ async function main() {
     state
   });
 
+  // Change this if you want to debug another backend target.
   const baseUrl = "http://127.0.0.1:8080";
 
   for (let i = 1; i <= 20; i += 1) {

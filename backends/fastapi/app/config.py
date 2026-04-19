@@ -2,6 +2,8 @@ from dataclasses import dataclass
 import os
 
 
+# Read one environment variable as a string.
+# If it is missing and no default is provided, fail fast at startup.
 def get_env(name: str, default: str | None = None) -> str:
     value = os.getenv(name)
 
@@ -13,6 +15,8 @@ def get_env(name: str, default: str | None = None) -> str:
     return value
 
 
+# Read one environment variable as an integer.
+# This keeps numeric parsing in one place and makes configuration errors explicit.
 def get_int_env(name: str, default: int) -> int:
     raw = get_env(name, str(default))
 
@@ -22,6 +26,9 @@ def get_int_env(name: str, default: int) -> int:
         raise RuntimeError(f"Environment variable {name} must be a valid integer") from exc
 
 
+# Central application settings.
+# Keeping all environment-based configuration here avoids scattering os.getenv()
+# calls across the rest of the codebase.
 @dataclass(frozen=True)
 class Settings:
     app_name: str

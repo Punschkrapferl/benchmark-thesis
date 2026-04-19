@@ -4,8 +4,18 @@ const { resolveTarget } = require("./target-resolver");
 const { runExperiment } = require("./execution/experiment-runner");
 const { writeResults } = require("./results/result-writer");
 
+// Only these output categories are allowed.
+// "validation" is for smaller/sanity runs.
+// "official" is for the final benchmark result set.
 const ALLOWED_CATEGORIES = ["validation", "official"];
 
+// Parse command-line arguments.
+// Supported flags:
+// --backend
+// --category
+// --scenario
+// --state
+// --concurrency
 function parseCliArgs(argv) {
   const args = {
     backend: "express",
@@ -58,6 +68,7 @@ function parseCliArgs(argv) {
     }
   }
 
+  // Category is mandatory because results are written into category-specific folders.
   if (!args.category) {
     throw new Error(
       'Missing required argument "--category". Use either "--category validation" or "--category official".'
@@ -73,6 +84,7 @@ function parseCliArgs(argv) {
   return args;
 }
 
+// Apply optional CLI filters to the full experiment point list.
 function filterExperimentPoints(experimentPoints, args) {
   return experimentPoints.filter((experimentPoint) => {
     if (args.scenario && experimentPoint.scenarioId !== args.scenario) {
@@ -91,6 +103,7 @@ function filterExperimentPoints(experimentPoints, args) {
   });
 }
 
+// Print currently active filters to the terminal for visibility.
 function printActiveFilters(args) {
   const activeFilters = [`category=${args.category}`];
 
@@ -109,6 +122,8 @@ function printActiveFilters(args) {
   console.log(`Active experiment filters: ${activeFilters.join(", ")}`);
 }
 
+// Store filters inside run metadata so each result folder
+// documents exactly which subset of experiments was executed.
 function buildAppliedFilters(args) {
   return {
     scenario: args.scenario,
@@ -117,10 +132,12 @@ function buildAppliedFilters(args) {
   };
 }
 
+// Convert runner start/end timestamps into rounded wall-clock seconds.
 function toWallClockDurationSeconds(startedAtMs, finishedAtMs) {
   return Number(((finishedAtMs - startedAtMs) / 1000).toFixed(3));
 }
 
+// Main benchmark runner entry point.
 async function main() {
   const runnerStartedAtMs = Date.now();
   const runnerStartedAt = new Date(runnerStartedAtMs).toISOString();
@@ -129,6 +146,7 @@ async function main() {
   const config = loadConfig();
   const target = resolveTarget(args.backend);
 
+  // Expand the benchmark matrix into concrete executable experiment points.
   const allExperimentPoints = buildExperimentPoints({
     benchmarkPolicy: config.benchmarkPolicy,
     dataStates: config.dataStates,
@@ -153,6 +171,7 @@ async function main() {
 
   const allExperimentResults = [];
 
+  // Run all selected experiment points sequentially.
   for (let i = 0; i < filteredExperimentPoints.length; i += 1) {
     const experimentPoint = filteredExperimentPoints[i];
 
@@ -179,6 +198,7 @@ async function main() {
   const runnerFinishedAtMs = Date.now();
   const runnerFinishedAt = new Date(runnerFinishedAtMs).toISOString();
 
+  // Build metadata for this full benchmark runner execution.
   const runMetadata = {
     category: args.category,
     backend: args.backend,
@@ -202,6 +222,7 @@ async function main() {
     )
   };
 
+  // Persist results into the timestamped results directory.
   const writtenFiles = writeResults({
     category: args.category,
     backend: args.backend,

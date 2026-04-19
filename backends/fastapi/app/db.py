@@ -4,6 +4,7 @@ from psycopg_pool import ConnectionPool
 from .config import settings
 
 
+# Build the PostgreSQL connection string used by psycopg.
 def build_conninfo() -> str:
     return (
         f"host={settings.db_host} "
@@ -14,6 +15,8 @@ def build_conninfo() -> str:
     )
 
 
+# Create one shared connection pool for the whole application.
+# The pool is opened during FastAPI startup and closed during shutdown.
 pool = ConnectionPool(
     conninfo=build_conninfo(),
     min_size=settings.db_pool_min_size,
@@ -24,10 +27,12 @@ pool = ConnectionPool(
 )
 
 
+# Small accessor used by the repository wiring.
 def get_pool() -> ConnectionPool:
     return pool
 
 
+# Open the pool on startup and verify that PostgreSQL is reachable.
 def open_db_pool() -> None:
     pool.open()
 
@@ -37,5 +42,6 @@ def open_db_pool() -> None:
             cursor.fetchone()
 
 
+# Close the pool during graceful shutdown.
 def close_db_pool() -> None:
     pool.close()

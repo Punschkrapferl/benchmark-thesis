@@ -1,2 +1,0 @@
-backend,scenarioId,stateName,concurrency,throughput,latency_median,latency_p90,latency_p99,error_rate
-springboot,s2-write,empty,1,2188.2,293,528,585,0

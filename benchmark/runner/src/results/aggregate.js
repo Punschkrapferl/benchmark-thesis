@@ -1,3 +1,6 @@
+// Compute the median of a numeric array.
+// Median is used as the aggregation strategy because it is more robust
+// against outliers than a simple arithmetic mean.
 function median(values) {
   if (!Array.isArray(values) || values.length === 0) {
     return 0;
@@ -6,13 +9,17 @@ function median(values) {
   const sorted = [...values].sort((a, b) => a - b);
   const middleIndex = Math.floor(sorted.length / 2);
 
+  // For even-length arrays, return the average of the two middle values.
   if (sorted.length % 2 === 0) {
     return (sorted[middleIndex - 1] + sorted[middleIndex]) / 2;
   }
 
+  // For odd-length arrays, return the middle value directly.
   return sorted[middleIndex];
 }
 
+// Aggregate all measured repetition metrics into one representative result set.
+// Each metric is aggregated independently using median.
 function aggregateMeasuredMetrics(measuredMetricsList) {
   return {
     throughput: median(measuredMetricsList.map((item) => item.throughput)),

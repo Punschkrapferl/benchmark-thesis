@@ -1,14 +1,24 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
+    <!-- Target .NET 8 for the benchmark backend -->
     <TargetFramework>net8.0</TargetFramework>
+
+    <!-- Enable nullable reference type analysis -->
     <Nullable>enable</Nullable>
+
+    <!-- Automatically include common using directives -->
     <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Root namespace for the project -->
     <RootNamespace>TodoBench.AspNet</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- EF Core base package -->
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.8" />
+
+    <!-- PostgreSQL provider for EF Core -->
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.4" />
   </ItemGroup>
 

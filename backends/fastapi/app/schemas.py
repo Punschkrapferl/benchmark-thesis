@@ -1,22 +1,9 @@
 from pydantic import BaseModel, ConfigDict
 
 
-class TodoCreateRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    title: str
-    completed: bool | None = None
-    order: int | None = None
-
-
-class TodoPatchRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    title: str | None = None
-    completed: bool | None = None
-    order: int | None = None
-
-
+# Response-only schema.
+# Request validation is handled manually in the service layer so FastAPI/Pydantic
+# does not introduce framework-specific behavior that differs from Express.
 class TodoResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
 

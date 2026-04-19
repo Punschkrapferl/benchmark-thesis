@@ -1,5 +1,7 @@
 import { query } from '../config/database.js';
 
+// Fetch all todos ordered by ID.
+// The repository layer is responsible only for persistence logic and SQL.
 export async function findAllTodos() {
   const sql = `
     SELECT id, title, completed, "order", created_at
@@ -10,6 +12,7 @@ export async function findAllTodos() {
   return result.rows;
 }
 
+// Fetch one todo by ID.
 export async function findTodoById(id) {
   const sql = `
     SELECT id, title, completed, "order", created_at
@@ -20,6 +23,7 @@ export async function findTodoById(id) {
   return result.rows[0] ?? null;
 }
 
+// Insert a new todo and return the inserted row.
 export async function createTodo({ title, completed, order }) {
   const sql = `
     INSERT INTO todos (title, completed, "order")
@@ -31,6 +35,9 @@ export async function createTodo({ title, completed, order }) {
   return result.rows[0];
 }
 
+// Partially update a todo.
+// COALESCE keeps the old value when a field is not provided.
+// The special CASE handles explicit null for "order".
 export async function updateTodo(id, { title, completed, order }) {
   const sql = `
     UPDATE todos
@@ -52,6 +59,7 @@ export async function updateTodo(id, { title, completed, order }) {
   return result.rows[0] ?? null;
 }
 
+// Delete one todo by ID and return the deleted row ID if it existed.
 export async function deleteTodoById(id) {
   const sql = `
     DELETE FROM todos
@@ -62,6 +70,7 @@ export async function deleteTodoById(id) {
   return result.rows[0] ?? null;
 }
 
+// Delete all todos.
 export async function deleteAllTodos() {
   const sql = 'DELETE FROM todos';
   await query(sql);

@@ -10,6 +10,8 @@ import {
 
 const router = Router();
 
+// Route definitions for the Todo API.
+// Each route delegates to a controller function.
 router.get('/todos', getTodosHandler);
 router.post('/todos', createTodoHandler);
 router.get('/todos/:id', getTodoByIdHandler);

@@ -2,6 +2,9 @@ using System.Text.Json.Serialization;
 
 namespace TodoBench.AspNet.Dtos;
 
+// Public response DTO returned by the API.
+// JsonPropertyOrder keeps the output field order predictable
+// and aligned with the benchmark contract.
 public class TodoResponse
 {
     [JsonPropertyOrder(1)]

@@ -1,2 +1,0 @@
-backend,scenarioId,stateName,concurrency,throughput,latency_median,latency_p90,latency_p99,error_rate
-fastapi,s3-mixed-crud,medium,8,16.67,492,748,1008,0.001

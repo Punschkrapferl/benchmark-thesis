@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 
+// Map each backend name to its backend-specific reset+seed shell script.
 const SCRIPT_BY_BACKEND = Object.freeze({
   express: path.join("scripts", "express", "reset-and-seed-express-db-state.sh"),
   springboot: path.join("scripts", "springboot", "reset-and-seed-springboot-db-state.sh"),
@@ -9,8 +10,10 @@ const SCRIPT_BY_BACKEND = Object.freeze({
   fastapi: path.join("scripts", "fastapi", "reset-and-seed-fastapi-db-state.sh")
 });
 
+// Allowed benchmark database states.
 const VALID_STATES = new Set(["empty", "small", "medium", "large"]);
 
+// Execute a shell script synchronously and fail immediately on execution problems.
 function runScript(scriptPath, args = [], cwd) {
   const result = spawnSync(scriptPath, args, {
     cwd,
@@ -27,6 +30,7 @@ function runScript(scriptPath, args = [], cwd) {
   }
 }
 
+// Resolve the correct backend-specific reset-and-seed script.
 function resolveResetAndSeedScriptPath(backend, repoRoot) {
   const relativeScriptPath = SCRIPT_BY_BACKEND[backend];
 
@@ -48,6 +52,7 @@ function resolveResetAndSeedScriptPath(backend, repoRoot) {
   return absoluteScriptPath;
 }
 
+// Validate that a legal state name was provided.
 function validateStateName(stateName) {
   if (!stateName) {
     throw new Error("Missing benchmark state name for database preparation");
@@ -61,6 +66,10 @@ function validateStateName(stateName) {
   }
 }
 
+// Prepare the database for one run by:
+// 1. validating the requested state
+// 2. resolving the correct backend script
+// 3. executing the reset-and-seed process
 function prepareDatabaseState({ backend, stateName }) {
   validateStateName(stateName);
 

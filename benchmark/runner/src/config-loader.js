@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 
+// Read and parse one JSON file with validation for file existence and JSON syntax.
 function readJsonFile(filePath) {
   if (!fs.existsSync(filePath)) {
     throw new Error(`Required JSON file not found: ${filePath}`);
@@ -15,6 +16,7 @@ function readJsonFile(filePath) {
   }
 }
 
+// Validate the benchmark policy structure.
 function validatePolicy(policy) {
   const requiredKeys = [
     "warmupRuns",
@@ -33,6 +35,8 @@ function validatePolicy(policy) {
   }
 }
 
+// Validate that all required named benchmark states exist
+// and each has the required metadata.
 function validateDataStates(dataStates) {
   const requiredStates = ["empty", "small", "medium", "large"];
 
@@ -52,6 +56,7 @@ function validateDataStates(dataStates) {
   }
 }
 
+// Validate the experiment matrix structure.
 function validateExperimentMatrix(matrix) {
   if (!matrix.experiments || !Array.isArray(matrix.experiments)) {
     throw new Error("experiment-matrix.json must contain an 'experiments' array");
@@ -82,6 +87,9 @@ function validateExperimentMatrix(matrix) {
   }
 }
 
+// Validate one scenario JSON file.
+// Important: operation weights must sum to exactly 100
+// so the weighted request picker works correctly.
 function validateScenario(scenario, scenarioFileName) {
   const requiredKeys = ["id", "name", "description", "operations"];
 
@@ -117,6 +125,7 @@ function validateScenario(scenario, scenarioFileName) {
   }
 }
 
+// Load all scenario JSON files from the scenarios directory and index them by scenario ID.
 function loadScenarios(scenariosDirPath) {
   if (!fs.existsSync(scenariosDirPath)) {
     throw new Error(`Scenarios directory not found: ${scenariosDirPath}`);
@@ -149,6 +158,11 @@ function loadScenarios(scenariosDirPath) {
   return scenariosById;
 }
 
+// Load the complete benchmark configuration:
+// - policy
+// - data states
+// - experiment matrix
+// - all scenario definitions
 function loadConfig() {
   const benchmarkDir = path.resolve(__dirname, "..", "..");
   const configDir = path.join(benchmarkDir, "config");

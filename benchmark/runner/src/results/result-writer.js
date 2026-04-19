@@ -1,18 +1,22 @@
 const fs = require("fs");
 const path = require("path");
 
+// Create the target directory recursively if it does not exist yet.
 function ensureDirectory(directoryPath) {
   fs.mkdirSync(directoryPath, { recursive: true });
 }
 
+// Convert ISO timestamps into filesystem-safe folder names.
 function sanitizeTimestamp(isoTimestamp) {
   return isoTimestamp.replace(/:/g, "-").replace(/\./g, "-");
 }
 
+// Write formatted JSON to disk.
 function writeJson(filePath, data) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf8");
 }
 
+// Escape CSV values when they contain commas, quotes, or line breaks.
 function escapeCsvValue(value) {
   const stringValue = String(value);
 
@@ -27,6 +31,8 @@ function escapeCsvValue(value) {
   return stringValue;
 }
 
+// Write a list of objects into a CSV file.
+// The object keys of the first row are used as the header order.
 function writeCsv(filePath, rows) {
   if (!rows.length) {
     fs.writeFileSync(filePath, "", "utf8");
@@ -44,6 +50,7 @@ function writeCsv(filePath, rows) {
   fs.writeFileSync(filePath, lines.join("\n"), "utf8");
 }
 
+// Build a compact per-experiment summary table for CSV output.
 function buildSummaryRows(allExperimentResults) {
   return allExperimentResults.map((result) => ({
     backend: result.backend,
@@ -58,6 +65,11 @@ function buildSummaryRows(allExperimentResults) {
   }));
 }
 
+// Write the benchmark run output into the results directory.
+// For each run, this function writes:
+// - raw-results.json
+// - summary.csv
+// - run-metadata.json
 function writeResults({ category, backend, allExperimentResults, runMetadata }) {
   const benchmarkDir = path.resolve(__dirname, "..", "..", "..");
   const timestamp = sanitizeTimestamp(new Date().toISOString());
