@@ -1034,16 +1034,6 @@ The benchmark framework is designed not only to produce results, but also to mak
 
 ---
 
-This repository contains work developed as part of a bachelor thesis.
-
-© 2026 Punschkrapferl. All rights reserved regarding the thesis content.
-
-While the source code is licensed under the MIT License below, the overall work,
-including its structure, methodology, and written thesis, constitutes academic work.
-
-Unauthorized submission of this work, in whole or in part, as one’s own academic work
-(e.g., for university assignments or theses) constitutes plagiarism.
-
 MIT License
 
 Copyright (c) 2026 Punschkrapferl
@@ -1065,3 +1055,13 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## License and Academic Use
+
+This repository contains work developed as part of a bachelor thesis.
+
+The source code is licensed under the MIT License. However, the overall work,
+including the benchmark design, methodology, and structure, constitutes academic work.
+
+Using this work as part of another academic submission without proper citation
+is considered plagiarism.
