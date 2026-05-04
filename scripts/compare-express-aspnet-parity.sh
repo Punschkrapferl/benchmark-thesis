@@ -16,19 +16,61 @@ ASPNET_BASE_URL="${2:-http://127.0.0.1:8081}"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
-# These variables will store the real seeded IDs returned by each backend.
+# These variables store the real seeded IDs returned by each backend.
+# The IDs are captured dynamically because the concrete ID values may differ
+# between backend databases.
 EXPRESS_SEED_ID_1=""
 EXPRESS_SEED_ID_2=""
 ASPNET_SEED_ID_1=""
 ASPNET_SEED_ID_2=""
 
+# Track whether any parity case failed.
+# The script does not stop at the first mismatch.
+# Instead, it runs all cases, collects failures, and exits with code 1 at the end
+# if at least one mismatch was detected.
+FAILED_CASE_COUNT=0
+FAILED_CASES=()
+
 # Print a visual section title.
 print_section() {
   local title="$1"
+
   echo
   echo "=================================================="
   echo "${title}"
   echo "=================================================="
+}
+
+# Store the name of a failed parity case.
+record_failed_case() {
+  local name="$1"
+
+  FAILED_CASE_COUNT=$((FAILED_CASE_COUNT + 1))
+  FAILED_CASES+=("${name}")
+}
+
+# Print the final parity result.
+# Exit code:
+# - 0 means all parity cases passed
+# - 1 means at least one parity case failed
+print_parity_summary_and_exit() {
+  print_section "Parity result"
+
+  if [[ "${FAILED_CASE_COUNT}" -eq 0 ]]; then
+    echo "All parity cases passed."
+    exit 0
+  fi
+
+  echo "Parity check failed."
+  echo "Failed case count: ${FAILED_CASE_COUNT}"
+  echo
+  echo "Failed cases:"
+
+  for failed_case in "${FAILED_CASES[@]}"; do
+    echo " - ${failed_case}"
+  done
+
+  exit 1
 }
 
 # Convert a human-readable test name into a safe filename fragment.
@@ -46,7 +88,7 @@ sanitize_name() {
 
 # Replace placeholder tokens in paths with the real seeded IDs.
 # This allows the same logical test case to target matching seeded resources
-# even if IDs differ between backends.
+# even if the generated IDs differ between backend databases.
 resolve_path_for_backend() {
   local backend="$1"
   local path_template="$2"
@@ -56,9 +98,12 @@ resolve_path_for_backend() {
   if [[ "${backend}" == "express" ]]; then
     resolved="${resolved//\{\{seed_1\}\}/${EXPRESS_SEED_ID_1}}"
     resolved="${resolved//\{\{seed_2\}\}/${EXPRESS_SEED_ID_2}}"
-  else
+  elif [[ "${backend}" == "aspnet" ]]; then
     resolved="${resolved//\{\{seed_1\}\}/${ASPNET_SEED_ID_1}}"
     resolved="${resolved//\{\{seed_2\}\}/${ASPNET_SEED_ID_2}}"
+  else
+    echo "Unsupported backend for path resolution: ${backend}"
+    exit 1
   fi
 
   printf '%s' "${resolved}"
@@ -114,6 +159,7 @@ perform_request() {
       "${url}" > "${raw_file}"
   fi
 
+  # Split raw curl response into headers and body.
   awk 'BEGIN{in_body=0} /^\r?$/{in_body=1; next} {if(!in_body) print}' "${raw_file}" > "${headers_file}"
   awk 'BEGIN{in_body=0} /^\r?$/{in_body=1; next} {if(in_body) print}' "${raw_file}" > "${body_file}"
 
@@ -129,10 +175,12 @@ perform_request() {
 }
 
 # Normalize headers before comparison.
+#
 # Important:
-# - skip the first line (status line), because status is compared separately
-# - remove unstable or transport-specific headers
-# - normalize JSON content-type variants
+# - The first line is skipped because the numeric status code is compared separately.
+# - Transport-specific or unstable headers are removed.
+# - JSON content-type variants are normalized.
+# - Location headers are lowercased to avoid casing differences.
 normalize_headers() {
   local input_file="$1"
 
@@ -171,7 +219,7 @@ normalize_headers() {
 }
 
 # Normalize bodies before comparison.
-# Replace backend-specific base URLs so that only semantic differences remain.
+# Backend-specific base URLs are replaced so that only semantic differences remain.
 normalize_body() {
   local input_file="$1"
 
@@ -183,16 +231,19 @@ normalize_body() {
 
 # Compare one test case between Express and ASP.NET.
 #
-# Parameters:
-# 1 = human-readable test name
-# 2 = HTTP method
-# 3 = request path template, may contain {{seed_1}} or {{seed_2}}
-# 4 = optional request body
+# A case fails if at least one of these differs:
+# - numeric HTTP status code
+# - normalized headers
+# - normalized body
+#
+# The script records the failed case but continues running the remaining cases.
 compare_case() {
   local name="$1"
   local method="$2"
   local path_template="$3"
   local body="${4:-}"
+
+  local case_failed=0
 
   local safe_name
   safe_name="$(sanitize_name "${name}")"
@@ -202,6 +253,7 @@ compare_case() {
 
   local express_path
   local aspnet_path
+
   express_path="$(resolve_path_for_backend express "${path_template}")"
   aspnet_path="$(resolve_path_for_backend aspnet "${path_template}")"
 
@@ -212,6 +264,7 @@ compare_case() {
 
   local express_status_code
   local aspnet_status_code
+
   express_status_code="$(extract_status_code "${express_prefix}.headers")"
   aspnet_status_code="$(extract_status_code "${aspnet_prefix}.headers")"
 
@@ -234,6 +287,7 @@ compare_case() {
     echo "Status: DIFFERENT"
     echo "  Express: ${express_status_code}"
     echo "  ASP.NET: ${aspnet_status_code}"
+    case_failed=1
   fi
 
   if diff -u "${express_headers_norm}" "${aspnet_headers_norm}" > /dev/null; then
@@ -241,6 +295,7 @@ compare_case() {
   else
     echo "Headers: DIFFERENT"
     diff -u "${express_headers_norm}" "${aspnet_headers_norm}" || true
+    case_failed=1
   fi
 
   if diff -u "${express_body_norm}" "${aspnet_body_norm}" > /dev/null; then
@@ -248,6 +303,14 @@ compare_case() {
   else
     echo "Body: DIFFERENT"
     diff -u "${express_body_norm}" "${aspnet_body_norm}" || true
+    case_failed=1
+  fi
+
+  if [[ "${case_failed}" -eq 0 ]]; then
+    echo "Case result: PASS"
+  else
+    echo "Case result: FAIL"
+    record_failed_case "${name}"
   fi
 }
 
@@ -272,13 +335,13 @@ check_backend_ready() {
   echo "Both backends are reachable."
 }
 
-# Reset both backends and seed the same initial data.
+# Reset both backend databases and seed the same deterministic initial data.
 # The returned IDs are captured and reused in later test cases.
 seed_test_data() {
   print_section "Preparing clean test state"
 
   # Reset both backend databases to a clean state and restart identity.
-  # This ensures both backends start parity testing from the same DB state.
+  # This ensures both backends start parity testing from the same logical DB state.
   ./scripts/express/reset-express-db.sh
   ./scripts/aspnet/reset-aspnet-db.sh
 
@@ -352,6 +415,10 @@ main() {
 
   compare_case "DELETE /todos" "DELETE" "/todos"
   compare_case "GET /todos after delete all" "GET" "/todos"
+
+  # This is the important final step.
+  # Without this call, mismatches would be printed but the script would still exit successfully.
+  print_parity_summary_and_exit
 }
 
 main "$@"

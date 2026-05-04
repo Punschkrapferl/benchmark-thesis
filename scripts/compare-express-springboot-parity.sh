@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# Exit immediately on:
+# - any command failure
+# - use of an undefined variable
+# - failure inside a pipeline
 set -euo pipefail
 
 # Optional custom base URLs.
@@ -7,21 +11,66 @@ set -euo pipefail
 EXPRESS_BASE_URL="${1:-http://127.0.0.1:3001}"
 SPRINGBOOT_BASE_URL="${2:-http://127.0.0.1:8080}"
 
+# Temporary directory for intermediate response files.
+# It is removed automatically when the script exits.
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
+# These variables store the real seeded IDs returned by each backend.
+# The IDs are captured dynamically because the concrete ID values may differ
+# between backend databases.
 EXPRESS_SEED_ID_1=""
 EXPRESS_SEED_ID_2=""
 SPRINGBOOT_SEED_ID_1=""
 SPRINGBOOT_SEED_ID_2=""
 
+# Track whether any parity case failed.
+# The script does not stop at the first mismatch.
+# Instead, it runs all cases, collects failures, and exits with code 1 at the end
+# if at least one mismatch was detected.
+FAILED_CASE_COUNT=0
+FAILED_CASES=()
+
 # Print a visual section header.
 print_section() {
   local title="$1"
+
   echo
   echo "=================================================="
   echo "${title}"
   echo "=================================================="
+}
+
+# Store the name of a failed parity case.
+record_failed_case() {
+  local name="$1"
+
+  FAILED_CASE_COUNT=$((FAILED_CASE_COUNT + 1))
+  FAILED_CASES+=("${name}")
+}
+
+# Print the final parity result.
+# Exit code:
+# - 0 means all parity cases passed
+# - 1 means at least one parity case failed
+print_parity_summary_and_exit() {
+  print_section "Parity result"
+
+  if [[ "${FAILED_CASE_COUNT}" -eq 0 ]]; then
+    echo "All parity cases passed."
+    exit 0
+  fi
+
+  echo "Parity check failed."
+  echo "Failed case count: ${FAILED_CASE_COUNT}"
+  echo
+  echo "Failed cases:"
+
+  for failed_case in "${FAILED_CASES[@]}"; do
+    echo " - ${failed_case}"
+  done
+
+  exit 1
 }
 
 # Turn a human-readable test name into a safe filename fragment.
@@ -48,9 +97,12 @@ resolve_path_for_backend() {
   if [[ "${backend}" == "express" ]]; then
     resolved="${resolved//\{\{seed_1\}\}/${EXPRESS_SEED_ID_1}}"
     resolved="${resolved//\{\{seed_2\}\}/${EXPRESS_SEED_ID_2}}"
-  else
+  elif [[ "${backend}" == "springboot" ]]; then
     resolved="${resolved//\{\{seed_1\}\}/${SPRINGBOOT_SEED_ID_1}}"
     resolved="${resolved//\{\{seed_2\}\}/${SPRINGBOOT_SEED_ID_2}}"
+  else
+    echo "Unsupported backend for path resolution: ${backend}"
+    exit 1
   fi
 
   printf '%s' "${resolved}"
@@ -98,6 +150,7 @@ perform_request() {
       "${url}" > "${raw_file}"
   fi
 
+  # Split raw curl response into headers and body.
   awk 'BEGIN{in_body=0} /^\r?$/{in_body=1; next} {if(!in_body) print}' "${raw_file}" > "${headers_file}"
   awk 'BEGIN{in_body=0} /^\r?$/{in_body=1; next} {if(in_body) print}' "${raw_file}" > "${body_file}"
 
@@ -113,10 +166,12 @@ perform_request() {
 }
 
 # Normalize headers before comparison.
+#
 # Important:
-# - skip the first line (status line), because status is compared separately
-# - remove transport-specific headers
-# - normalize JSON content-type variants
+# - The first line is skipped because the numeric status code is compared separately.
+# - Transport-specific or unstable headers are removed.
+# - JSON content-type variants are normalized.
+# - Location headers are lowercased to avoid casing differences.
 normalize_headers() {
   local input_file="$1"
 
@@ -165,11 +220,20 @@ normalize_body() {
 }
 
 # Compare one logical test case between Express and Spring Boot.
+#
+# A case fails if at least one of these differs:
+# - numeric HTTP status code
+# - normalized headers
+# - normalized body
+#
+# The script records the failed case but continues running the remaining cases.
 compare_case() {
   local name="$1"
   local method="$2"
   local path_template="$3"
   local body="${4:-}"
+
+  local case_failed=0
 
   local safe_name
   safe_name="$(sanitize_name "${name}")"
@@ -179,6 +243,7 @@ compare_case() {
 
   local express_path
   local springboot_path
+
   express_path="$(resolve_path_for_backend express "${path_template}")"
   springboot_path="$(resolve_path_for_backend springboot "${path_template}")"
 
@@ -189,6 +254,7 @@ compare_case() {
 
   local express_status_code
   local springboot_status_code
+
   express_status_code="$(extract_status_code "${express_prefix}.headers")"
   springboot_status_code="$(extract_status_code "${springboot_prefix}.headers")"
 
@@ -211,6 +277,7 @@ compare_case() {
     echo "Status: DIFFERENT"
     echo "  Express: ${express_status_code}"
     echo "  Spring Boot: ${springboot_status_code}"
+    case_failed=1
   fi
 
   if diff -u "${express_headers_norm}" "${springboot_headers_norm}" > /dev/null; then
@@ -218,6 +285,7 @@ compare_case() {
   else
     echo "Headers: DIFFERENT"
     diff -u "${express_headers_norm}" "${springboot_headers_norm}" || true
+    case_failed=1
   fi
 
   if diff -u "${express_body_norm}" "${springboot_body_norm}" > /dev/null; then
@@ -225,22 +293,53 @@ compare_case() {
   else
     echo "Body: DIFFERENT"
     diff -u "${express_body_norm}" "${springboot_body_norm}" || true
+    case_failed=1
   fi
+
+  if [[ "${case_failed}" -eq 0 ]]; then
+    echo "Case result: PASS"
+  else
+    echo "Case result: FAIL"
+    record_failed_case "${name}"
+  fi
+}
+
+# Wait until one backend is reachable.
+# This avoids failing immediately when Docker reports the container as started,
+# but the application inside the container is not ready yet.
+check_url_ready() {
+  local label="$1"
+  local base_url="$2"
+  local max_attempts=30
+  local sleep_seconds=2
+
+  echo "Waiting for ${label} at ${base_url} ..."
+
+  for attempt in $(seq 1 "${max_attempts}"); do
+    if curl -fsS "${base_url}/todos" > /dev/null 2>&1; then
+      echo "${label} is reachable."
+      return 0
+    fi
+
+    echo "${label} not ready yet, attempt ${attempt}/${max_attempts} ..."
+    sleep "${sleep_seconds}"
+  done
+
+  echo "${label} is not reachable at ${base_url}"
+  return 1
 }
 
 # Check that both backends are reachable before the parity run starts.
 check_backend_ready() {
   print_section "Checking backend availability"
 
-  if ! curl -fsS "${EXPRESS_BASE_URL}/todos" > /dev/null; then
-    echo "Express backend is not reachable at ${EXPRESS_BASE_URL}"
+  if ! check_url_ready "Express backend" "${EXPRESS_BASE_URL}"; then
     echo "Start it first, for example with:"
     echo "  docker compose up -d postgres express springboot"
     exit 1
   fi
 
-  if ! curl -fsS "${SPRINGBOOT_BASE_URL}/todos" > /dev/null; then
-    echo "Spring Boot backend is not reachable at ${SPRINGBOOT_BASE_URL}"
+  if ! check_url_ready "Spring Boot backend" "${SPRINGBOOT_BASE_URL}"; then
     echo "Start it first, for example with:"
     echo "  docker compose up -d postgres express springboot"
     exit 1
@@ -253,6 +352,7 @@ check_backend_ready() {
 seed_test_data() {
   print_section "Preparing clean test state"
 
+  # Reset both backend databases to a clean state and restart identity.
   ./scripts/express/reset-express-db.sh
   ./scripts/springboot/reset-springboot-db.sh
 
@@ -332,6 +432,10 @@ main() {
 
   compare_case "DELETE /todos" "DELETE" "/todos"
   compare_case "GET /todos after delete all" "GET" "/todos"
+
+  # This is the important final step.
+  # Without this call, mismatches would be printed but the script would still exit successfully.
+  print_parity_summary_and_exit
 }
 
 main "$@"
