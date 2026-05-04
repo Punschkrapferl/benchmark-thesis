@@ -30,18 +30,12 @@
       "name": "patchTodo",
       "method": "PATCH",
       "path": "/todos/:id",
-      "weight": 10,
+      "weight": 15,
       "bodyTemplate": {
         "title": "{{title}}",
         "completed": "{{completed}}",
         "order": "{{order}}"
       }
-    },
-    {
-      "name": "deleteTodo",
-      "method": "DELETE",
-      "path": "/todos/:id",
-      "weight": 5
     }
   ]
 }
