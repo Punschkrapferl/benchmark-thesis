@@ -105,6 +105,15 @@ coverage/
 lcov.info
 
 # --------------------------------------------------
+# Generated benchmark outputs
+# --------------------------------------------------
+benchmark/results/**
+!benchmark/results/
+!benchmark/results/official/
+!benchmark/results/official/**
+!benchmark/results/README.md
+
+# --------------------------------------------------
 # Archives / local exports
 # --------------------------------------------------
 *.zip
