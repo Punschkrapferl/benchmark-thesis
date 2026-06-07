@@ -4,12 +4,14 @@
   "warmupDurationSeconds": 30,
   "measuredDurationSeconds": 60,
   "resetBeforeEachRun": true,
+  "requestTimeoutSeconds": 30,
   "aggregation": "median",
   "metrics": [
     "throughput",
     "latency_median",
     "latency_p90",
     "latency_p99",
-    "error_rate"
+    "error_rate",
+    "dropped_iteration_rate"
   ]
 }

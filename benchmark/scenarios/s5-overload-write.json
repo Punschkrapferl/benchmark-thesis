@@ -1,0 +1,18 @@
+{
+  "id": "s5-overload-write",
+  "name": "S5 Overload Write Probe",
+  "description": "Open-model overload scenario. Uses the same pure-create profile as S2 (100% POST) but is driven by a fixed request arrival rate (req/s) instead of a fixed number of clients. Pairs with closed-model S2 to compare write throughput plateau (closed) versus the offered rate at which creates start failing or the load generator sheds load (open).",
+  "operations": [
+    {
+      "name": "createTodo",
+      "method": "POST",
+      "path": "/todos",
+      "weight": 100,
+      "bodyTemplate": {
+        "title": "{{title}}",
+        "completed": false,
+        "order": "{{order}}"
+      }
+    }
+  ]
+}

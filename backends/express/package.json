@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "node --watch src/server.js",
-    "start": "node src/server.js"
+    "start": "node src/cluster.js"
   },
   "dependencies": {
     "dotenv": "^17.3.1",

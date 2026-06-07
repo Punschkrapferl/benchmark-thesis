@@ -1,19 +1,43 @@
 {
   "experiments": [
     {
-      "scenarioId": "s1-read-only",
+      "scenarioId": "s1-read-only-paged",
+      "loadModel": "closed",
       "states": ["small", "medium", "large"],
-      "concurrency": [1, 8, 32]
+      "concurrency": [1, 8, 32, 64, 128]
     },
     {
       "scenarioId": "s2-write",
+      "loadModel": "closed",
       "states": ["empty", "small"],
       "concurrency": [1, 8, 32]
     },
     {
       "scenarioId": "s3-mixed-crud",
+      "loadModel": "closed",
       "states": ["medium"],
-      "concurrency": [8, 32]
+      "concurrency": [8, 32, 64]
+    },
+    {
+      "scenarioId": "s4-overload",
+      "loadModel": "open",
+      "states": ["medium"],
+      "arrivalRates": [1000, 2000, 4000, 8000, 16000, 32000],
+      "maxVus": 2000
+    },
+    {
+      "scenarioId": "s5-overload-write",
+      "loadModel": "open",
+      "states": ["empty", "small"],
+      "arrivalRates": [1000, 2000, 4000, 8000, 16000, 32000],
+      "maxVus": 2000
+    },
+    {
+      "scenarioId": "s6-overload-mixed-crud",
+      "loadModel": "open",
+      "states": ["medium"],
+      "arrivalRates": [1000, 2000, 4000, 8000, 16000, 32000],
+      "maxVus": 2000
     }
   ]
 }

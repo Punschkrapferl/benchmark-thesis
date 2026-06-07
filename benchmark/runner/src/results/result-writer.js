@@ -56,12 +56,14 @@ function buildSummaryRows(allExperimentResults) {
     backend: result.backend,
     scenarioId: result.scenarioId,
     stateName: result.stateName,
-    concurrency: result.concurrency,
+    loadModel: result.loadModel,
+    loadLevel: result.loadLevel,
     throughput: result.aggregatedMetrics.throughput,
     latency_median: result.aggregatedMetrics.latency_median,
     latency_p90: result.aggregatedMetrics.latency_p90,
     latency_p99: result.aggregatedMetrics.latency_p99,
-    error_rate: result.aggregatedMetrics.error_rate
+    error_rate: result.aggregatedMetrics.error_rate,
+    dropped_iteration_rate: result.aggregatedMetrics.dropped_iteration_rate
   }));
 }
 

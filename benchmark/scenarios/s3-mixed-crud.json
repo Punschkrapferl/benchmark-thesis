@@ -1,19 +1,19 @@
 {
   "id": "s3-mixed-crud",
   "name": "S3 Mixed CRUD",
-  "description": "Mixed CRUD workload on a medium data state.",
+  "description": "Mixed CRUD workload on a medium data state: keyset-paginated and single-resource reads plus create and update writes. All reads are bounded so results reflect framework request handling rather than full-table serialization.",
   "operations": [
     {
-      "name": "listTodos",
+      "name": "listTodosPaged",
       "method": "GET",
-      "path": "/todos",
-      "weight": 50
+      "path": "/todos?limit=100&afterId={{afterId}}",
+      "weight": 55
     },
     {
       "name": "getTodoById",
       "method": "GET",
       "path": "/todos/:id",
-      "weight": 20
+      "weight": 15
     },
     {
       "name": "createTodo",

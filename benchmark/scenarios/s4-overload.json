@@ -1,0 +1,19 @@
+{
+  "id": "s4-overload",
+  "name": "S4 Overload Probe",
+  "description": "Open-model overload scenario. Uses the same read profile as S1 (keyset-paginated and single-resource reads) but is driven by a fixed request arrival rate (req/s) instead of a fixed number of clients. Pairs with closed-model S1 to compare read plateau (closed) versus the offered rate at which latency, error_rate, and dropped_iteration_rate reveal the breaking point (open).",
+  "operations": [
+    {
+      "name": "listTodosPaged",
+      "method": "GET",
+      "path": "/todos?limit=100&afterId={{afterId}}",
+      "weight": 80
+    },
+    {
+      "name": "getTodoById",
+      "method": "GET",
+      "path": "/todos/:id",
+      "weight": 20
+    }
+  ]
+}

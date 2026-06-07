@@ -1,14 +1,34 @@
 import { query } from '../config/database.js';
 
-// Fetch all todos ordered by ID.
-// The repository layer is responsible only for persistence logic and SQL.
-export async function findAllTodos() {
+// Fetch todos ordered by ID.
+//
+// limit and afterId are optional so the API can still support the original
+// unbounded GET /todos behavior for compatibility. The official benchmark
+// scenario uses keyset pagination (WHERE id > afterId) so deep pages stay
+// O(log n) instead of degrading with table size like OFFSET.
+export async function findAllTodos({ limit = null, afterId = 0 } = {}) {
+  const hasLimit = Number.isInteger(limit) && limit > 0;
+
+  if (!hasLimit) {
+    const sql = `
+      SELECT id, title, completed, "order", created_at
+      FROM todos
+      ORDER BY id ASC
+    `;
+
+    const result = await query(sql);
+    return result.rows;
+  }
+
   const sql = `
     SELECT id, title, completed, "order", created_at
     FROM todos
+    WHERE id > $1
     ORDER BY id ASC
+    LIMIT $2
   `;
-  const result = await query(sql);
+
+  const result = await query(sql, [afterId, limit]);
   return result.rows;
 }
 
@@ -19,6 +39,7 @@ export async function findTodoById(id) {
     FROM todos
     WHERE id = $1
   `;
+
   const result = await query(sql, [id]);
   return result.rows[0] ?? null;
 }
@@ -36,6 +57,7 @@ export async function createTodo({ title, completed, order }) {
 }
 
 // Partially update a todo.
+//
 // COALESCE keeps the old value when a field is not provided.
 // The special CASE handles explicit null for "order".
 export async function updateTodo(id, { title, completed, order }) {
@@ -66,6 +88,7 @@ export async function deleteTodoById(id) {
     WHERE id = $1
     RETURNING id
   `;
+
   const result = await query(sql, [id]);
   return result.rows[0] ?? null;
 }

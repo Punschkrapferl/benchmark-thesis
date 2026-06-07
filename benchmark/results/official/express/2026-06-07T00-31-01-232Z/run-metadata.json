@@ -1,0 +1,34 @@
+{
+  "category": "official",
+  "backend": "express",
+  "loadGenerator": "k6-docker",
+  "k6DockerImage": "grafana/k6:2.0.0",
+  "dockerNetwork": "benchmark-net",
+  "targetBaseUrl": "http://express:3001",
+  "selectedExperimentCount": 48,
+  "appliedFilters": {
+    "scenario": null,
+    "state": null,
+    "concurrency": null
+  },
+  "benchmarkPolicy": {
+    "warmupRuns": 1,
+    "measuredRuns": 5,
+    "warmupDurationSeconds": 30,
+    "measuredDurationSeconds": 60,
+    "resetBeforeEachRun": true,
+    "requestTimeoutSeconds": 30,
+    "aggregation": "median",
+    "metrics": [
+      "throughput",
+      "latency_median",
+      "latency_p90",
+      "latency_p99",
+      "error_rate",
+      "dropped_iteration_rate"
+    ]
+  },
+  "startedAt": "2026-06-06T20:01:02.157Z",
+  "finishedAt": "2026-06-07T00:31:01.231Z",
+  "wallClockDurationSeconds": 16199.074
+}

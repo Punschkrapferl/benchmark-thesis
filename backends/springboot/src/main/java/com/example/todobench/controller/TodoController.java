@@ -3,6 +3,7 @@ package com.example.todobench.controller;
 import com.example.todobench.dto.TodoResponse;
 import com.example.todobench.model.Todo;
 import com.example.todobench.service.TodoService;
+import com.example.todobench.support.TodoPagination;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
@@ -35,11 +36,16 @@ public class TodoController {
 
     /**
      * GET /todos
-     * Return all todos ordered by ID.
+     * Return all todos or a keyset page when limit/afterId query params are present.
      */
     @GetMapping
-    public List<TodoResponse> getAllTodos(HttpServletRequest request) {
-        return todoService.listTodos()
+    public List<TodoResponse> getAllTodos(
+            HttpServletRequest request,
+            @RequestParam(required = false) String limit,
+            @RequestParam(required = false) String afterId) {
+        TodoPagination pagination = TodoPagination.fromQueryParams(limit, afterId);
+
+        return todoService.listTodos(pagination)
                 .stream()
                 .map(todo -> toResponse(request, todo))
                 .toList();

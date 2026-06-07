@@ -1,10 +1,11 @@
 import json
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Response, status
+from fastapi import FastAPI, Query, Request, Response, status
 from fastapi.responses import JSONResponse
 
 from .config import settings
+from .pagination import build_pagination_options
 from .db import close_db_pool, get_pool, open_db_pool
 from .repository import TodoRepository
 from .schemas import TodoResponse
@@ -19,9 +20,9 @@ service = TodoService(repository)
 # Open the PostgreSQL pool on startup and close it on shutdown.
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    open_db_pool()
+    await open_db_pool()
     yield
-    close_db_pool()
+    await close_db_pool()
 
 
 app = FastAPI(
@@ -75,8 +76,13 @@ async def unhandled_exception_handler(_: Request, exc: Exception) -> JSONRespons
 
 # GET /todos
 @app.get("/todos")
-async def get_todos(request: Request) -> list[dict]:
-    todos = service.list_todos()
+async def get_todos(
+    request: Request,
+    limit: str | None = Query(default=None),
+    after_id: str | None = Query(default=None, alias="afterId"),
+) -> list[dict]:
+    pagination = build_pagination_options(limit, after_id)
+    todos = await service.list_todos(pagination)
     return [to_todo_response(request, todo).model_dump() for todo in todos]
 
 
@@ -84,7 +90,7 @@ async def get_todos(request: Request) -> list[dict]:
 @app.post("/todos", status_code=status.HTTP_201_CREATED)
 async def create_todo(request: Request, response: Response) -> dict:
     payload = await parse_json_body(request)
-    todo = service.create_new_todo(payload)
+    todo = await service.create_new_todo(payload)
 
     response.headers["Location"] = f"/todos/{todo['id']}"
     return to_todo_response(request, todo).model_dump()
@@ -93,7 +99,7 @@ async def create_todo(request: Request, response: Response) -> dict:
 # DELETE /todos
 @app.delete("/todos", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_todos() -> Response:
-    service.remove_all_todos()
+    await service.remove_all_todos()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -101,7 +107,7 @@ async def delete_todos() -> Response:
 # Keep id as string so service-level validation produces the exact Express error.
 @app.get("/todos/{id}", name="get_todo_by_id")
 async def get_todo_by_id(id: str, request: Request) -> dict:
-    todo = service.get_todo_by_id(id)
+    todo = await service.get_todo_by_id(id)
     return to_todo_response(request, todo).model_dump()
 
 
@@ -109,14 +115,14 @@ async def get_todo_by_id(id: str, request: Request) -> dict:
 @app.patch("/todos/{id}")
 async def patch_todo(id: str, request: Request) -> dict:
     payload = await parse_json_body(request)
-    todo = service.patch_todo(id, payload)
+    todo = await service.patch_todo(id, payload)
     return to_todo_response(request, todo).model_dump()
 
 
 # DELETE /todos/{id}
 @app.delete("/todos/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_todo(id: str) -> Response:
-    service.remove_todo(id)
+    await service.remove_todo(id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

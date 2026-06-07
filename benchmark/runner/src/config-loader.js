@@ -24,6 +24,7 @@ function validatePolicy(policy) {
     "warmupDurationSeconds",
     "measuredDurationSeconds",
     "resetBeforeEachRun",
+    "requestTimeoutSeconds",
     "aggregation",
     "metrics"
   ];
@@ -63,7 +64,7 @@ function validateExperimentMatrix(matrix) {
   }
 
   for (const experiment of matrix.experiments) {
-    const requiredKeys = ["scenarioId", "states", "concurrency"];
+    const requiredKeys = ["scenarioId", "states", "loadModel"];
 
     for (const key of requiredKeys) {
       if (!(key in experiment)) {
@@ -79,11 +80,47 @@ function validateExperimentMatrix(matrix) {
       );
     }
 
-    if (!Array.isArray(experiment.concurrency) || experiment.concurrency.length === 0) {
-      throw new Error(
-        `Experiment "${experiment.scenarioId}" must define a non-empty concurrency array`
-      );
+    if (experiment.loadModel === "closed") {
+      validateClosedModelExperiment(experiment);
+      continue;
     }
+
+    if (experiment.loadModel === "open") {
+      validateOpenModelExperiment(experiment);
+      continue;
+    }
+
+    throw new Error(
+      `Experiment "${experiment.scenarioId}" has invalid loadModel "${experiment.loadModel}". ` +
+        'Allowed values: "closed", "open".'
+    );
+  }
+}
+
+// Closed-model experiments drive a fixed number of virtual users (connections).
+// The numeric axis is the concurrency array.
+function validateClosedModelExperiment(experiment) {
+  if (!Array.isArray(experiment.concurrency) || experiment.concurrency.length === 0) {
+    throw new Error(
+      `Closed-model experiment "${experiment.scenarioId}" must define a non-empty concurrency array`
+    );
+  }
+}
+
+// Open-model experiments drive a fixed request arrival rate (req/s) regardless of
+// whether the backend keeps up. maxVus caps the in-flight requests the load
+// generator is allowed to allocate before it sheds load (dropped iterations).
+function validateOpenModelExperiment(experiment) {
+  if (!Array.isArray(experiment.arrivalRates) || experiment.arrivalRates.length === 0) {
+    throw new Error(
+      `Open-model experiment "${experiment.scenarioId}" must define a non-empty arrivalRates array`
+    );
+  }
+
+  if (!Number.isInteger(experiment.maxVus) || experiment.maxVus <= 0) {
+    throw new Error(
+      `Open-model experiment "${experiment.scenarioId}" must define a positive integer maxVus`
+    );
   }
 }
 

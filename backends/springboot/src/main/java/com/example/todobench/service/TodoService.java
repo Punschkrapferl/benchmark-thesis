@@ -3,6 +3,7 @@ package com.example.todobench.service;
 import com.example.todobench.exception.AppException;
 import com.example.todobench.model.Todo;
 import com.example.todobench.repository.TodoRepository;
+import com.example.todobench.support.TodoPagination;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Iterator;
 import java.util.List;
@@ -31,10 +32,13 @@ public class TodoService {
     }
 
     /**
-     * Return all todos.
+     * Return todos, optionally paginated with Express-equivalent semantics.
      */
-    public List<Todo> listTodos() {
-        return todoRepository.findAll();
+    public List<Todo> listTodos(TodoPagination pagination) {
+        return todoRepository.findAll(
+                pagination.paginated(),
+                pagination.limit(),
+                pagination.afterId());
     }
 
     /**

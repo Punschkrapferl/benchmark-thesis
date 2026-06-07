@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using TodoBench.AspNet.Data;
 using TodoBench.AspNet.Dtos;
 using TodoBench.AspNet.Models;
+using TodoBench.AspNet.Pagination;
 
 // Create the ASP.NET application builder.
 // This is the entry point for configuring services and endpoints.
@@ -146,12 +147,25 @@ static (bool Success, string? Title, bool Completed, int? Order, IResult? Error)
 }
 
 // GET /todos
-// Return all todos ordered by ascending ID.
-app.MapGet("/todos", async (HttpRequest request, TodoDbContext db) =>
+// Return all todos or a keyset page when limit/afterId query params are present.
+app.MapGet("/todos", async (
+    HttpRequest request,
+    TodoDbContext db,
+    string? limit,
+    string? afterId) =>
 {
-    var todos = await db.Todos
-        .OrderBy(todo => todo.Id)
-        .ToListAsync();
+    var pagination = TodoPagination.FromQueryParams(limit, afterId);
+
+    IQueryable<TodoItem> query = db.Todos.OrderBy(todo => todo.Id);
+
+    if (pagination.Paginated)
+    {
+        query = query
+            .Where(todo => todo.Id > pagination.AfterId)
+            .Take(pagination.Limit!.Value);
+    }
+
+    var todos = await query.ToListAsync();
 
     return Results.Ok(todos.Select(todo => ToTodoResponse(request, todo)));
 });

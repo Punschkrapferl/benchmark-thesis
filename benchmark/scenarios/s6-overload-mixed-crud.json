@@ -1,0 +1,41 @@
+{
+  "id": "s6-overload-mixed-crud",
+  "name": "S6 Overload Mixed CRUD Probe",
+  "description": "Open-model overload scenario. Uses the same mixed CRUD profile as S3 (keyset-paginated reads, get-by-id, create, patch) but is driven by a fixed request arrival rate (req/s) instead of a fixed number of clients. Pairs with closed-model S3 to compare mixed-workload plateau (closed) versus the offered rate at which latency, error_rate, and dropped_iteration_rate reveal the breaking point (open).",
+  "operations": [
+    {
+      "name": "listTodosPaged",
+      "method": "GET",
+      "path": "/todos?limit=100&afterId={{afterId}}",
+      "weight": 55
+    },
+    {
+      "name": "getTodoById",
+      "method": "GET",
+      "path": "/todos/:id",
+      "weight": 15
+    },
+    {
+      "name": "createTodo",
+      "method": "POST",
+      "path": "/todos",
+      "weight": 15,
+      "bodyTemplate": {
+        "title": "{{title}}",
+        "completed": false,
+        "order": "{{order}}"
+      }
+    },
+    {
+      "name": "patchTodo",
+      "method": "PATCH",
+      "path": "/todos/:id",
+      "weight": 15,
+      "bodyTemplate": {
+        "title": "{{title}}",
+        "completed": "{{completed}}",
+        "order": "{{order}}"
+      }
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "category": "official",
+  "backend": "springboot",
+  "loadGenerator": "k6-docker",
+  "k6DockerImage": "grafana/k6:2.0.0",
+  "dockerNetwork": "benchmark-net",
+  "targetBaseUrl": "http://springboot:8080",
+  "selectedExperimentCount": 48,
+  "appliedFilters": {
+    "scenario": null,
+    "state": null,
+    "concurrency": null
+  },
+  "benchmarkPolicy": {
+    "warmupRuns": 1,
+    "measuredRuns": 5,
+    "warmupDurationSeconds": 30,
+    "measuredDurationSeconds": 60,
+    "resetBeforeEachRun": true,
+    "requestTimeoutSeconds": 30,
+    "aggregation": "median",
+    "metrics": [
+      "throughput",
+      "latency_median",
+      "latency_p90",
+      "latency_p99",
+      "error_rate",
+      "dropped_iteration_rate"
+    ]
+  },
+  "startedAt": "2026-06-07T00:46:09.806Z",
+  "finishedAt": "2026-06-07T05:16:27.149Z",
+  "wallClockDurationSeconds": 16217.343
+}

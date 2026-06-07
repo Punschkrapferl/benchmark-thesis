@@ -3,6 +3,11 @@ const { buildExperimentPoints } = require("./matrix-builder");
 const { resolveTarget } = require("./target-resolver");
 const { runExperiment } = require("./execution/experiment-runner");
 const { writeResults } = require("./results/result-writer");
+const {
+  assertK6Available,
+  resolveK6DockerImage,
+  resolveDockerNetwork
+} = require("./execution/run-k6");
 
 // Only these output categories are allowed.
 // "validation" is for smaller/sanity runs.
@@ -95,7 +100,7 @@ function filterExperimentPoints(experimentPoints, args) {
       return false;
     }
 
-    if (args.concurrency !== null && experimentPoint.concurrency !== args.concurrency) {
+    if (args.concurrency !== null && experimentPoint.loadLevel !== args.concurrency) {
       return false;
     }
 
@@ -143,6 +148,8 @@ async function main() {
   const runnerStartedAt = new Date(runnerStartedAtMs).toISOString();
 
   const args = parseCliArgs(process.argv.slice(2));
+  assertK6Available();
+
   const config = loadConfig();
   const target = resolveTarget(args.backend);
 
@@ -175,10 +182,15 @@ async function main() {
   for (let i = 0; i < filteredExperimentPoints.length; i += 1) {
     const experimentPoint = filteredExperimentPoints[i];
 
+    const loadDescription =
+      experimentPoint.loadModel === "open"
+        ? `rate=${experimentPoint.loadLevel}/s`
+        : `concurrency=${experimentPoint.loadLevel}`;
+
     console.log("");
     console.log("============================================================");
     console.log(
-      `Experiment ${i + 1}/${filteredExperimentPoints.length}: ${experimentPoint.scenarioId} | state=${experimentPoint.stateName} | concurrency=${experimentPoint.concurrency}`
+      `Experiment ${i + 1}/${filteredExperimentPoints.length}: ${experimentPoint.scenarioId} | state=${experimentPoint.stateName} | ${loadDescription}`
     );
     console.log("============================================================");
     console.log("");
@@ -202,6 +214,9 @@ async function main() {
   const runMetadata = {
     category: args.category,
     backend: args.backend,
+    loadGenerator: "k6-docker",
+    k6DockerImage: resolveK6DockerImage(),
+    dockerNetwork: resolveDockerNetwork(),
     targetBaseUrl: target.baseUrl,
     selectedExperimentCount: filteredExperimentPoints.length,
     appliedFilters: buildAppliedFilters(args),
@@ -211,6 +226,7 @@ async function main() {
       warmupDurationSeconds: config.benchmarkPolicy.warmupDurationSeconds,
       measuredDurationSeconds: config.benchmarkPolicy.measuredDurationSeconds,
       resetBeforeEachRun: config.benchmarkPolicy.resetBeforeEachRun,
+      requestTimeoutSeconds: config.benchmarkPolicy.requestTimeoutSeconds,
       aggregation: config.benchmarkPolicy.aggregation,
       metrics: config.benchmarkPolicy.metrics
     },

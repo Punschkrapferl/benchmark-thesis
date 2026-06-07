@@ -18,15 +18,32 @@ function median(values) {
   return sorted[middleIndex];
 }
 
+// Compute the maximum of a numeric array.
+function maximum(values) {
+  if (!Array.isArray(values) || values.length === 0) {
+    return 0;
+  }
+
+  return values.reduce((highest, value) => (value > highest ? value : highest), values[0]);
+}
+
 // Aggregate all measured repetition metrics into one representative result set.
-// Each metric is aggregated independently using median.
+//
+// Performance metrics (throughput, latency) use the median because it is robust
+// against outliers. Failure metrics (error_rate, dropped_iteration_rate) use the
+// maximum on purpose: a single repetition where the backend failed or the load
+// generator shed load is exactly the breaking-point signal we are looking for,
+// and the median would discard it.
 function aggregateMeasuredMetrics(measuredMetricsList) {
   return {
     throughput: median(measuredMetricsList.map((item) => item.throughput)),
     latency_median: median(measuredMetricsList.map((item) => item.latency_median)),
     latency_p90: median(measuredMetricsList.map((item) => item.latency_p90)),
     latency_p99: median(measuredMetricsList.map((item) => item.latency_p99)),
-    error_rate: median(measuredMetricsList.map((item) => item.error_rate))
+    error_rate: maximum(measuredMetricsList.map((item) => item.error_rate)),
+    dropped_iteration_rate: maximum(
+      measuredMetricsList.map((item) => item.dropped_iteration_rate)
+    )
   };
 }
 

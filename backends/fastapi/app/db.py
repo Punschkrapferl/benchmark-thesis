@@ -1,10 +1,9 @@
 from psycopg.rows import dict_row
-from psycopg_pool import ConnectionPool
+from psycopg_pool import AsyncConnectionPool
 
 from .config import settings
 
 
-# Build the PostgreSQL connection string used by psycopg.
 def build_conninfo() -> str:
     return (
         f"host={settings.db_host} "
@@ -15,9 +14,7 @@ def build_conninfo() -> str:
     )
 
 
-# Create one shared connection pool for the whole application.
-# The pool is opened during FastAPI startup and closed during shutdown.
-pool = ConnectionPool(
+pool = AsyncConnectionPool(
     conninfo=build_conninfo(),
     min_size=settings.db_pool_min_size,
     max_size=settings.db_pool_max_size,
@@ -27,21 +24,18 @@ pool = ConnectionPool(
 )
 
 
-# Small accessor used by the repository wiring.
-def get_pool() -> ConnectionPool:
+def get_pool() -> AsyncConnectionPool:
     return pool
 
 
-# Open the pool on startup and verify that PostgreSQL is reachable.
-def open_db_pool() -> None:
-    pool.open()
+async def open_db_pool() -> None:
+    await pool.open()
 
-    with pool.connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT 1")
-            cursor.fetchone()
+    async with pool.connection() as connection:
+        async with connection.cursor() as cursor:
+            await cursor.execute("SELECT 1")
+            await cursor.fetchone()
 
 
-# Close the pool during graceful shutdown.
-def close_db_pool() -> None:
-    pool.close()
+async def close_db_pool() -> None:
+    await pool.close()

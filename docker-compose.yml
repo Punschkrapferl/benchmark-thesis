@@ -5,6 +5,7 @@ services:
   postgres:
     image: postgres:15.17
     container_name: benchmark-postgres
+    cpus: 2
     environment:
       POSTGRES_USER: ${POSTGRES_USER?POSTGRES_USER is required}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD?POSTGRES_PASSWORD is required}
@@ -31,24 +32,28 @@ services:
       context: ./backends/express
       dockerfile: Dockerfile
     container_name: benchmark-express
+    cpus: 4
     depends_on:
       postgres:
         condition: service_healthy
     environment:
       PORT: 3001
       NODE_ENV: production
+      WEB_CONCURRENCY: 4
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: todo_express
       DB_USER: ${POSTGRES_USER?POSTGRES_USER is required}
       DB_PASSWORD: ${POSTGRES_PASSWORD?POSTGRES_PASSWORD is required}
-      DB_POOL_MAX: 10
+      DB_POOL_MAX: 5
       DB_IDLE_TIMEOUT_MS: 30000
       DB_CONNECTION_TIMEOUT_MS: 2000
     ports:
       - "3001:3001"
     networks:
-      - benchmark-net
+      benchmark-net:
+        aliases:
+          - express
 
   # Spring Boot backend container.
   # Gradle is the active build system for this backend.
@@ -57,6 +62,7 @@ services:
       context: ./backends/springboot
       dockerfile: Dockerfile
     container_name: benchmark-springboot
+    cpus: 4
     depends_on:
       postgres:
         condition: service_healthy
@@ -68,7 +74,9 @@ services:
     ports:
       - "8080:8080"
     networks:
-      - benchmark-net
+      benchmark-net:
+        aliases:
+          - springboot
 
   # ASP.NET backend container.
   aspnet:
@@ -76,24 +84,28 @@ services:
       context: ./backends/aspnet
       dockerfile: Dockerfile
     container_name: benchmark-aspnet
+    cpus: 4
     depends_on:
       postgres:
         condition: service_healthy
     environment:
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8081
-      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=todo_aspnet;Username=${POSTGRES_USER?POSTGRES_USER is required};Password=${POSTGRES_PASSWORD?POSTGRES_PASSWORD is required}
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=todo_aspnet;Username=${POSTGRES_USER?POSTGRES_USER is required};Password=${POSTGRES_PASSWORD?POSTGRES_PASSWORD is required};Maximum Pool Size=20
     ports:
       - "8081:8081"
     networks:
-      - benchmark-net
+      benchmark-net:
+        aliases:
+          - aspnet
 
   # FastAPI backend container.
-  # The current benchmark runner expects FastAPI on localhost:8082.
   fastapi:
     build:
       context: ./backends/fastapi
       dockerfile: Dockerfile
     container_name: benchmark-fastapi
+    cpus: 4
     depends_on:
       postgres:
         condition: service_healthy
@@ -106,12 +118,14 @@ services:
       DB_USER: ${POSTGRES_USER?POSTGRES_USER is required}
       DB_PASSWORD: ${POSTGRES_PASSWORD?POSTGRES_PASSWORD is required}
       DB_POOL_MIN_SIZE: 1
-      DB_POOL_MAX_SIZE: 10
+      DB_POOL_MAX_SIZE: 5
       DB_POOL_TIMEOUT_SECONDS: 10
     ports:
       - "8082:8082"
     networks:
-      - benchmark-net
+      benchmark-net:
+        aliases:
+          - fastapi
 
 volumes:
   postgres_data:

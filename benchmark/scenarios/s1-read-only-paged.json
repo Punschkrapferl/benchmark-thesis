@@ -1,0 +1,19 @@
+{
+  "id": "s1-read-only-paged",
+  "name": "S1 Read-Only Paged Baseline",
+  "description": "Read-dominated workload with paginated collection reads and single-resource reads. This is the official read-only benchmark scenario because collection reads use keyset pagination (limit + afterId), keeping page cost independent of table size.",
+  "operations": [
+    {
+      "name": "listTodosPaged",
+      "method": "GET",
+      "path": "/todos?limit=100&afterId={{afterId}}",
+      "weight": 80
+    },
+    {
+      "name": "getTodoById",
+      "method": "GET",
+      "path": "/todos/:id",
+      "weight": 20
+    }
+  ]
+}

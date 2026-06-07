@@ -1,16 +1,28 @@
+// Resolve the numeric load axis for one matrix entry into a model-agnostic list.
+//
+// closed -> concurrency (number of virtual users / connections)
+// open   -> arrivalRates (target requests per second)
+//
+// Both collapse into a single "loadLevel" value on each experiment point so the
+// rest of the pipeline does not need to special-case the load model.
+function resolveLoadLevels(experiment) {
+  if (experiment.loadModel === "open") {
+    return experiment.arrivalRates;
+  }
+
+  return experiment.concurrency;
+}
+
 // Expand the experiment matrix into a flat list of concrete experiment points.
 //
-// Example:
+// Example (closed model):
 // If a matrix entry contains:
-// - scenario = s1-read-only
+// - scenario = s1-read-only-paged
 // - states = [small, medium]
 // - concurrency = [1, 8]
 //
-// then this function creates four concrete experiment points:
-// - s1-read-only + small + 1
-// - s1-read-only + small + 8
-// - s1-read-only + medium + 1
-// - s1-read-only + medium + 8
+// then this function creates four concrete experiment points, one per
+// (state, loadLevel) combination.
 function buildExperimentPoints({ benchmarkPolicy, dataStates, experimentMatrix, scenarios, backend }) {
   const experimentPoints = [];
 
@@ -21,6 +33,9 @@ function buildExperimentPoints({ benchmarkPolicy, dataStates, experimentMatrix, 
       throw new Error(`Scenario "${experiment.scenarioId}" referenced in matrix but not found`);
     }
 
+    const loadLevels = resolveLoadLevels(experiment);
+    const maxVus = experiment.loadModel === "open" ? experiment.maxVus : null;
+
     for (const stateName of experiment.states) {
       const state = dataStates[stateName];
 
@@ -30,7 +45,7 @@ function buildExperimentPoints({ benchmarkPolicy, dataStates, experimentMatrix, 
         );
       }
 
-      for (const concurrency of experiment.concurrency) {
+      for (const loadLevel of loadLevels) {
         experimentPoints.push({
           backend,
           scenarioId: scenario.id,
@@ -39,12 +54,15 @@ function buildExperimentPoints({ benchmarkPolicy, dataStates, experimentMatrix, 
           scenario,
           stateName,
           state,
-          concurrency,
+          loadModel: experiment.loadModel,
+          loadLevel,
+          maxVus,
           warmupRuns: benchmarkPolicy.warmupRuns,
           measuredRuns: benchmarkPolicy.measuredRuns,
           warmupDurationSeconds: benchmarkPolicy.warmupDurationSeconds,
           measuredDurationSeconds: benchmarkPolicy.measuredDurationSeconds,
           resetBeforeEachRun: benchmarkPolicy.resetBeforeEachRun,
+          requestTimeoutSeconds: benchmarkPolicy.requestTimeoutSeconds,
           aggregation: benchmarkPolicy.aggregation,
           metrics: benchmarkPolicy.metrics
         });

@@ -1,0 +1,35 @@
+@startuml execution-activity
+' Figure 6.2 - Benchmark execution (UML activity diagram with swimlanes)
+' Render: plantuml docs/diagrams/execution-activity.puml
+skinparam shadowing false
+title Figure 6.2 — Benchmark execution (activity, swimlanes)
+
+|Runner|
+start
+:Parse CLI arguments;
+:Load and validate configuration;
+:Resolve target backend URL;
+:Expand experiment matrix\n(scenario x state x load level);
+:Apply optional filters;
+
+while (more experiment points?) is (yes)
+  while (more repetitions?\n1 warmup + 5 measured) is (yes)
+    :Request DB reset + seed;
+    |PostgreSQL|
+    :Reset schema and\nseed selected data state;
+    |Runner|
+    :Spawn k6 for this repetition;
+    |k6 (Docker)|
+    :Generate load against backend\n(warmup 30s / measured 60s);
+    :Export run summary (JSON);
+    |Runner|
+    :Collect repetition result;
+  endwhile (no)
+  :Extract metrics\n(throughput, p50/p90/p99,\nerror, dropped);
+  :Aggregate\n(median performance,\nmax failure);
+endwhile (no)
+
+:Write raw-results.json,\nsummary.csv, run-metadata.json;
+stop
+
+@enduml

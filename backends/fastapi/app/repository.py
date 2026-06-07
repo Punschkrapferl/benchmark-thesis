@@ -1,52 +1,68 @@
-from psycopg_pool import ConnectionPool
+from psycopg_pool import AsyncConnectionPool
 
 
-# Repository layer responsible only for SQL and persistence.
 class TodoRepository:
-    def __init__(self, pool: ConnectionPool) -> None:
+    def __init__(self, pool: AsyncConnectionPool) -> None:
         self.pool = pool
 
-    # Return all todos ordered by ID ascending.
-    def find_all(self) -> list[dict]:
-        sql = """
-            SELECT id, title, completed, "order", created_at
-            FROM todos
-            ORDER BY id ASC
-        """
+    async def find_all(
+        self,
+        *,
+        paginated: bool,
+        limit: int | None,
+        after_id: int,
+    ) -> list[dict]:
+        if not paginated:
+            sql = """
+                SELECT id, title, completed, "order", created_at
+                FROM todos
+                ORDER BY id ASC
+            """
+            params = None
+        else:
+            sql = """
+                SELECT id, title, completed, "order", created_at
+                FROM todos
+                WHERE id > %(after_id)s
+                ORDER BY id ASC
+                LIMIT %(limit)s
+            """
+            params = {"limit": limit, "after_id": after_id}
 
-        with self.pool.connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(sql)
-                rows = cursor.fetchall()
+        async with self.pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                if params is None:
+                    await cursor.execute(sql)
+                else:
+                    await cursor.execute(sql, params)
+                rows = await cursor.fetchall()
 
         return rows
 
-    # Return one todo by ID or None if not found.
-    def find_by_id(self, todo_id: int) -> dict | None:
+    async def find_by_id(self, todo_id: int) -> dict | None:
         sql = """
             SELECT id, title, completed, "order", created_at
             FROM todos
             WHERE id = %(id)s
         """
 
-        with self.pool.connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(sql, {"id": todo_id})
-                row = cursor.fetchone()
+        async with self.pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(sql, {"id": todo_id})
+                row = await cursor.fetchone()
 
         return row
 
-    # Insert one todo and return the inserted row.
-    def create(self, title: str, completed: bool, order: int | None) -> dict:
+    async def create(self, title: str, completed: bool, order: int | None) -> dict:
         sql = """
             INSERT INTO todos (title, completed, "order")
             VALUES (%(title)s, %(completed)s, %(order)s)
             RETURNING id, title, completed, "order", created_at
         """
 
-        with self.pool.connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
+        async with self.pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
                     sql,
                     {
                         "title": title,
@@ -54,13 +70,11 @@ class TodoRepository:
                         "order": order,
                     },
                 )
-                row = cursor.fetchone()
+                row = await cursor.fetchone()
 
         return row
 
-    # Partially update one todo.
-    # This mirrors the Express SQL semantics exactly, including explicit null for "order".
-    def update(
+    async def update(
         self,
         todo_id: int,
         *,
@@ -90,9 +104,9 @@ class TodoRepository:
             RETURNING id, title, completed, "order", created_at
         """
 
-        with self.pool.connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
+        async with self.pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
                     sql,
                     {
                         "id": todo_id,
@@ -104,31 +118,29 @@ class TodoRepository:
                         "order": order,
                     },
                 )
-                row = cursor.fetchone()
+                row = await cursor.fetchone()
 
         return row
 
-    # Delete one todo and return the deleted ID if it existed.
-    def delete_by_id(self, todo_id: int) -> dict | None:
+    async def delete_by_id(self, todo_id: int) -> dict | None:
         sql = """
             DELETE FROM todos
             WHERE id = %(id)s
             RETURNING id
         """
 
-        with self.pool.connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(sql, {"id": todo_id})
-                row = cursor.fetchone()
+        async with self.pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(sql, {"id": todo_id})
+                row = await cursor.fetchone()
 
         return row
 
-    # Delete all todos.
-    def delete_all(self) -> None:
+    async def delete_all(self) -> None:
         sql = """
             DELETE FROM todos
         """
 
-        with self.pool.connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(sql)
+        async with self.pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(sql)

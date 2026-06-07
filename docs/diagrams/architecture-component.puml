@@ -1,0 +1,40 @@
+@startuml architecture-component
+' Figure 6.1 - Benchmarking system architecture (UML component view)
+' Render: plantuml docs/diagrams/architecture-component.puml
+skinparam componentStyle uml2
+skinparam defaultTextAlignment center
+skinparam shadowing false
+title Figure 6.1 — Benchmarking system architecture (component view)
+
+package "Host machine (macOS, Apple Silicon)" {
+
+  artifact "Configuration\n(benchmark-policy, data-states,\nexperiment-matrix, scenarios)" as Config
+  component "Benchmark Runner\n(Node.js orchestrator)" as Runner
+  component "Automation Scripts\n(reset / seed / parity / fairness)" as Scripts
+  artifact "Result Store\n(raw-results.json,\nsummary.csv, run-metadata.json)" as Results
+
+  package "Docker — network: benchmark-net" {
+    component "k6 Load Generator\n(container, 2 CPU)" as K6
+    component "Backend Under Test\n(container, 4 CPU)\nExpress | Spring Boot |\nASP.NET | FastAPI" as Backend
+    database "PostgreSQL\n(container, 2 CPU,\n20-connection pool)" as PG
+  }
+}
+
+' Provided interfaces (lollipops)
+interface "REST Todo API\n(HTTP)" as API
+interface "SQL (TCP)" as SQL
+
+Backend -up- API
+PG -up- SQL
+
+' Required interfaces / dependencies
+Config ..> Runner : <<provides config>>
+Runner ..> K6 : spawns\n(docker run)
+Runner ..> Scripts : invokes
+Runner ..> Results : writes
+Scripts ..> API : parity checks
+Scripts ..> PG : reset / seed
+K6 ..> API : HTTP load
+Backend ..> SQL : queries
+
+@enduml

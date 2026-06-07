@@ -102,9 +102,20 @@ function validatePatchPayload(payload) {
   };
 }
 
-// Return all todos.
-export async function listTodos() {
-  return findAllTodos();
+// Return todos.
+//
+// This method accepts optional keyset pagination options from the controller.
+// The official benchmark scenario calls:
+//
+// GET /todos?limit=100&afterId=0
+//
+// which translates to WHERE id > afterId ORDER BY id ASC LIMIT limit. This keeps
+// deep pages cheap regardless of table size and prevents loading the whole table.
+//
+// If no limit is provided, the repository keeps the old compatibility behavior
+// and returns all todos. The official benchmark should not use that old path.
+export async function listTodos({ limit = null, afterId = 0 } = {}) {
+  return findAllTodos({ limit, afterId });
 }
 
 // Return one todo or raise 404 if it does not exist.

@@ -36,6 +36,7 @@ function getNumberEnv(name, defaultValue) {
 const env = {
   nodeEnv: getEnv('NODE_ENV', 'development'),
   port: getNumberEnv('PORT', 3001),
+  webConcurrency: getNumberEnv('WEB_CONCURRENCY', 4),
 
   db: {
     host: getEnv('DB_HOST', 'localhost'),

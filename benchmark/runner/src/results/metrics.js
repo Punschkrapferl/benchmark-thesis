@@ -4,52 +4,80 @@ function safeNumber(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
-// Extract the benchmark metrics we care about from raw autocannon output.
-//
-// The selected metrics are:
-// - throughput
-// - latency median (p50)
-// - latency p90
-// - latency p99
-// - error rate
-function extractMetricsFromAutocannonResult(rawResult) {
-  const throughput = safeNumber(rawResult.requests?.average);
-  const latencyMedian = safeNumber(rawResult.latency?.p50);
-  const latencyP90 = safeNumber(rawResult.latency?.p90);
-  const latencyP99 = safeNumber(rawResult.latency?.p99);
+// k6 v0.x nests stats under metric.values; k6 v2+ flattens them on the metric object.
+function readMetricStat(metric, statName) {
+  if (!metric || typeof metric !== "object") {
+    return 0;
+  }
 
-  const errors = safeNumber(rawResult.errors);
-  const timeouts = safeNumber(rawResult.timeouts);
-  const non2xx = safeNumber(rawResult.non2xx);
+  if (typeof metric[statName] === "number") {
+    return safeNumber(metric[statName]);
+  }
 
-  const completedRequests = safeNumber(rawResult.requests?.total);
-  const sentRequests = safeNumber(rawResult.requests?.sent);
+  if (metric.values && typeof metric.values[statName] === "number") {
+    return safeNumber(metric.values[statName]);
+  }
 
-  // Count all request failures together.
-  const failureCount = errors + timeouts + non2xx;
+  return 0;
+}
 
-  // Use the best available denominator when computing the error rate.
-  // Prefer completed requests, then sent requests, then failure count if necessary.
-  const denominator =
-    completedRequests > 0
-      ? completedRequests
-      : sentRequests > 0
-        ? sentRequests
-        : failureCount > 0
-          ? failureCount
-          : 0;
+function extractErrorRate(httpReqFailedMetric) {
+  if (!httpReqFailedMetric || typeof httpReqFailedMetric !== "object") {
+    return 0;
+  }
 
-  const errorRate = denominator > 0 ? failureCount / denominator : 0;
+  const rateFromValues = httpReqFailedMetric.values?.rate;
+  if (typeof rateFromValues === "number" && Number.isFinite(rateFromValues)) {
+    return rateFromValues;
+  }
+
+  if (typeof httpReqFailedMetric.rate === "number" && Number.isFinite(httpReqFailedMetric.rate)) {
+    return httpReqFailedMetric.rate;
+  }
+
+  if (typeof httpReqFailedMetric.value === "number" && Number.isFinite(httpReqFailedMetric.value)) {
+    return httpReqFailedMetric.value;
+  }
+
+  const passes = safeNumber(httpReqFailedMetric.passes);
+  const fails = safeNumber(httpReqFailedMetric.fails);
+  const total = passes + fails;
+
+  if (total > 0) {
+    return fails / total;
+  }
+
+  return 0;
+}
+
+// Extract benchmark metrics from k6 --summary-export JSON.
+function extractMetricsFromK6Summary(summary) {
+  const metrics = summary.metrics;
+
+  if (!metrics || typeof metrics !== "object") {
+    throw new Error("k6 summary export is missing a metrics object");
+  }
+
+  const httpReqDuration = metrics.http_req_duration;
+  const httpReqs = metrics.http_reqs;
+  const httpReqFailed = metrics.http_req_failed;
+
+  // Only emitted by arrival-rate (open-model) executors. It counts iterations
+  // k6 could not start because every allocated VU was still busy, i.e. the
+  // load generator could not deliver the offered request rate. Absent (0) for
+  // closed-model runs.
+  const droppedIterations = metrics.dropped_iterations;
 
   return {
-    throughput,
-    latency_median: latencyMedian,
-    latency_p90: latencyP90,
-    latency_p99: latencyP99,
-    error_rate: errorRate
+    throughput: readMetricStat(httpReqs, "rate"),
+    latency_median: readMetricStat(httpReqDuration, "med"),
+    latency_p90: readMetricStat(httpReqDuration, "p(90)"),
+    latency_p99: readMetricStat(httpReqDuration, "p(99)"),
+    error_rate: extractErrorRate(httpReqFailed),
+    dropped_iteration_rate: readMetricStat(droppedIterations, "rate")
   };
 }
 
 module.exports = {
-  extractMetricsFromAutocannonResult
+  extractMetricsFromK6Summary
 };

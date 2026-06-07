@@ -38,14 +38,31 @@ public class TodoRepository {
         }
 
         /**
-         * Return all todos ordered by ID ascending.
+         * Return todos ordered by ID ascending.
+         *
+         * When paginated is false, returns the full table. When paginated is true,
+         * applies keyset pagination (WHERE id > afterId) like the Express repository.
          */
-        public List<Todo> findAll() {
+        public List<Todo> findAll(boolean paginated, Integer limit, int afterId) {
+                if (!paginated) {
+                        return jdbcClient.sql("""
+                                        SELECT id, title, completed, "order" AS display_order
+                                        FROM todos
+                                        ORDER BY id ASC
+                                        """)
+                                        .query(TODO_ROW_MAPPER)
+                                        .list();
+                }
+
                 return jdbcClient.sql("""
                                 SELECT id, title, completed, "order" AS display_order
                                 FROM todos
+                                WHERE id > ?
                                 ORDER BY id ASC
+                                LIMIT ?
                                 """)
+                                .param(afterId)
+                                .param(limit)
                                 .query(TODO_ROW_MAPPER)
                                 .list();
         }

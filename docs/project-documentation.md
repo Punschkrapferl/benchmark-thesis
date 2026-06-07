@@ -1,983 +1,437 @@
-# Backend Benchmark Framework
+# Project Documentation
 
-## TL;DR
+This document is the detailed technical reference for the backend benchmarking framework. It is intentionally more detailed than the top-level [`README.md`](../README.md) and serves as the main thesis-writing reference: methodology, architecture, configuration, load models, parity verification, fairness contract, result format, design decisions, and limitations.
 
-This repository contains a **reproducible backend benchmarking framework** for comparing equivalent REST Todo API implementations in:
+---
 
-- **Express**
-- **Spring Boot**
-- **ASP.NET**
-- **FastAPI**
+## Table of Contents
 
-The project is designed around **fairness and methodological consistency**:
+1. [Project Purpose](#1-project-purpose)
+2. [System Architecture](#2-system-architecture)
+3. [Backend Endpoint Mapping](#3-backend-endpoint-mapping)
+4. [Benchmark Runner Workflow](#4-benchmark-runner-workflow)
+5. [Project Structure](#5-project-structure)
+6. [Benchmark Configuration](#6-benchmark-configuration)
+7. [Benchmark Policy](#7-benchmark-policy)
+8. [Data States](#8-data-states)
+9. [Scenario Definitions](#9-scenario-definitions)
+10. [Load Models](#10-load-models)
+11. [Experiment Matrix](#11-experiment-matrix)
+12. [Keyset Pagination Contract](#12-keyset-pagination-contract)
+13. [Workload Generation](#13-workload-generation)
+14. [Database Preparation](#14-database-preparation)
+15. [Result Processing and Aggregation](#15-result-processing-and-aggregation)
+16. [Result Output](#16-result-output)
+17. [API Parity Verification](#17-api-parity-verification)
+18. [Fairness Contract (Option B)](#18-fairness-contract-option-b)
+19. [Containerization and the Dockerized Load Generator](#19-containerization-and-the-dockerized-load-generator)
+20. [Express Backend Example](#20-express-backend-example)
+21. [Environment Preparation and Execution Rules](#21-environment-preparation-and-execution-rules)
+22. [Design Decisions](#22-design-decisions)
+23. [Limitations](#23-limitations)
 
-- same API contract
-- same PostgreSQL-based persistence
-- same workload scenarios
-- same data states
-- same concurrency levels
-- same warmup/repetition policy
-- same containerized runtime via Docker Compose
+---
 
-A custom **Node.js benchmark runner** automates the full process:
+## 1. Project Purpose
 
-**configuration → database preparation → workload generation → benchmark execution → metric extraction → aggregation → result export**
+The purpose of this project is to provide a **reproducible benchmarking methodology** for comparing functionally equivalent REST backend implementations, applied as a case study to four frameworks that implement the same Todo API: **Express, Spring Boot, ASP.NET, FastAPI**.
 
-The benchmark measures:
+The focus is the methodology, not raw numbers. The project emphasizes:
 
-- **throughput**
-- **latency** (`median`, `p90`, `p99`)
-- **error rate**
+- equivalent API behavior across backends (verified before measuring)
+- a controlled, production-style runtime budget for every backend (fairness contract)
+- reproducible database states
+- repeated measurements with a defined aggregation strategy
+- a clear separation between benchmark configuration and execution
+- transparent, regenerable result output
 
-To ensure valid comparison, the repository also includes **API parity scripts** that verify the non-Express backends behave the same as the Express reference implementation before performance benchmarking begins.
+The benchmark is an **end-to-end backend benchmark**: the measured request path includes routing, validation, application logic, database access, and serialization. PostgreSQL is part of the system under test and is held constant across implementations. This is not an isolated framework-overhead microbenchmark.
 
-### Quick run examples
+It is intended to answer questions such as:
 
-Start PostgreSQL and one backend:
+- How does performance scale with increasing concurrency (closed-model plateau)?
+- At what offered request rate does a backend stop keeping up (open-model breaking point)?
+- How does dataset size influence read latency and throughput?
+- How do backends behave under read-heavy, write-heavy, and mixed workloads?
+- How stable and reproducible are the results across repeated runs?
 
-```bash
-docker compose up -d postgres express
+---
+
+## 2. System Architecture
+
+The benchmarking system consists of four parts:
+
+1. **Backend implementations** — the systems under test; each implements the same REST Todo API behind the same layered design.
+2. **Benchmark runner** — a Node.js orchestrator that loads configuration, prepares database states, drives the load generator, extracts and aggregates metrics, and writes results.
+3. **PostgreSQL** — a shared service with a separate database per backend.
+4. **Automation scripts and the Docker Compose runtime** — Compose starts the services; shell scripts handle reset, seed, parity, and fairness verification. The load generator (k6) also runs as a container.
+
+```mermaid
+graph TB
+    Config["Configuration<br/>policy · data-states · matrix · scenarios"]
+    Runner["Benchmark Runner<br/>(Node.js orchestrator)"]
+    Scripts["Automation Scripts<br/>reset / seed / parity / fairness"]
+    Results["Result Store<br/>raw-results.json · summary.csv · run-metadata.json"]
+    subgraph Docker["Docker — benchmark-net"]
+        K6["k6 Load Generator<br/>(2 CPU)"]
+        Backend["Backend Under Test (4 CPU)<br/>Express | Spring Boot | ASP.NET | FastAPI"]
+        PG[("PostgreSQL<br/>2 CPU · 20-conn pool")]
+    end
+    Config -->|provides config| Runner
+    Runner -->|spawns docker run| K6
+    Runner -->|invokes| Scripts
+    Runner -->|writes| Results
+    Scripts -->|parity checks| Backend
+    Scripts -->|reset / seed| PG
+    K6 -->|HTTP load: REST Todo API| Backend
+    Backend -->|SQL/TCP| PG
 ```
 
-Run a benchmark:
+Editable diagram sources (PlantUML + Mermaid) are in [`docs/diagrams/`](diagrams).
 
-```bash
-node benchmark/runner/src/index.js --category validation --backend express
+---
+
+## 3. Backend Endpoint Mapping
+
+The runner resolves the target backend from the `--backend` argument. Because the load generator runs as a container on `benchmark-net`, the runner targets **container hostnames**, not `127.0.0.1`:
+
+| Backend     | Benchmark target (container)   | Published host port (parity / manual) |
+| ----------- | ------------------------------ | ------------------------------------- |
+| Express     | `http://express:3001`          | `http://127.0.0.1:3001`               |
+| Spring Boot | `http://springboot:8080`       | `http://127.0.0.1:8080`               |
+| ASP.NET     | `http://aspnet:8081`           | `http://127.0.0.1:8081`               |
+| FastAPI     | `http://fastapi:8082`          | `http://127.0.0.1:8082`               |
+
+Implemented in `benchmark/runner/src/target-resolver.js`. Parity scripts and manual API checks use the published `127.0.0.1` ports.
+
+---
+
+## 4. Benchmark Runner Workflow
+
+```mermaid
+flowchart TD
+    Start([Start run]) --> CLI[Parse CLI args]
+    CLI --> Load[Load + validate configuration]
+    Load --> Resolve[Resolve target backend URL]
+    Resolve --> Expand[Expand experiment matrix<br/>scenario × state × load level]
+    Expand --> Filter[Apply optional filters]
+    Filter --> Loop{More experiment points?}
+    Loop -->|Yes| Rep{More repetitions?<br/>1 warmup + 5 measured}
+    Rep -->|Yes| Reset[Postgres: reset + seed data state]
+    Reset --> K6[k6: generate load<br/>warmup 30s / measured 60s]
+    K6 --> Collect[Runner: collect repetition result]
+    Collect --> Rep
+    Rep -->|No| Extract[Extract metrics:<br/>throughput · p50/p90/p99 · error · dropped]
+    Extract --> Aggregate[Aggregate:<br/>median performance · max failure]
+    Aggregate --> Loop
+    Loop -->|No| Write[Write result files]
+    Write --> End([End])
 ```
 
-Run one filtered benchmark example:
+For each selected experiment point the runner:
 
-```bash
-node benchmark/runner/src/index.js \
-  --category validation \
-  --backend express \
-  --scenario s1-read-only \
-  --state medium \
-  --concurrency 8
-```
+1. Resets and seeds the backend database into the selected data state.
+2. Executes the configured warmup runs (k6 in Docker).
+3. Executes the configured measured runs (k6 in Docker).
+4. Extracts throughput, latency percentiles, error rate, and dropped-iteration rate from each measured run.
+5. Aggregates measured metrics (median for performance, max for failures).
+6. Builds one structured experiment result.
 
-Run API parity verification:
-
-```bash
-./scripts/compare-express-aspnet-parity.sh
-./scripts/compare-express-fastapi-parity.sh
-./scripts/compare-express-springboot-parity.sh
-```
-
-In short, this is not just a set of backend implementations, but a **methodology-driven benchmark system** for transparent, repeatable, and academically structured backend performance analysis.
+After all points finish, the runner writes a timestamped result directory with `raw-results.json`, `summary.csv`, and `run-metadata.json`.
 
 ---
 
-## Overview
-
-This project implements a reproducible benchmarking framework for comparing the performance of different backend implementations of a RESTful Todo API. The benchmark evaluates how each backend behaves under varying workloads, dataset sizes, and concurrency levels.
-
-The primary goal is to measure and compare:
-
-- **Throughput** (requests per second)
-- **Latency** (median, p90, p99)
-- **Error rate**
-
-The framework is designed to ensure fairness, reproducibility, and extensibility by separating benchmark configuration from benchmark execution logic.
-
-A central design decision of this project is that **all backend implementations are containerized**. This ensures that all systems under test start from a comparable runtime setup, are started in a consistent way, and can be automated uniformly through Docker Compose.
-
----
-
-## Supported Backends
-
-The benchmark framework currently supports the following backend implementations:
-
-- Express (Node.js)
-- Spring Boot (Java)
-- ASP.NET (C#)
-- FastAPI (Python)
-
-Each backend exposes the same REST API contract and is benchmarked under identical workload and database conditions.
-
----
-
-## Benchmark Goal
-
-The purpose of this project is not simply to compare programming languages or frameworks in isolation. Instead, it provides a controlled methodology for analyzing how comparable backend implementations behave under defined experimental conditions.
-
-The benchmark is intended to answer questions such as:
-
-- How does performance scale with increasing concurrency?
-- How does dataset size influence latency and throughput?
-- How do frameworks behave under read-heavy, write-heavy, and mixed workloads?
-- How stable is each backend under repeated, automated execution?
-
----
-
-## System Architecture
-
-The benchmarking system consists of four main parts:
-
-1. **Backend implementations**  
-   The systems under test. Each backend implements the same Todo API.
-
-2. **Benchmark runner**  
-   A Node.js-based runner that loads configuration, prepares database states, generates workloads, executes benchmarks, and writes results.
-
-3. **PostgreSQL database**  
-   A shared PostgreSQL instance with a separate database for each backend.
-
-4. **Automation scripts and container runtime**  
-   Docker Compose is used to start backends and PostgreSQL in a consistent way. Shell scripts handle reset, seed, verification, startup, and shutdown steps.
-
-### Backend Endpoints
-
-Each backend is exposed via a local HTTP endpoint:
-
-| Backend     | Base URL              |
-| ----------- | --------------------- |
-| Express     | http://127.0.0.1:3001 |
-| Spring Boot | http://127.0.0.1:8080 |
-| ASP.NET     | http://127.0.0.1:8081 |
-| FastAPI     | http://127.0.0.1:8082 |
-
-The benchmark runner resolves the correct target endpoint based on the selected backend.
-
-### High-Level Workflow
-
-The overall benchmark flow is:
-
-**Configuration → Experiment generation → Database preparation → Workload execution → Metric extraction → Aggregation → Result writing**
-
-For each experiment point, the process is:
-
-1. Select one backend, scenario, data state, and concurrency level
-2. Reset and seed the corresponding database
-3. Execute a warmup run
-4. Execute multiple measured runs
-5. Extract metrics from the measured runs
-6. Aggregate the measured results using the median
-7. Write the results to timestamped output directory
-
----
-
-## Project Structure
+## 5. Project Structure
 
 ```text
-benchmark/
-  runner/
-    src/
-      execution/          # Core execution logic (autocannon, repetitions, experiments)
-      results/            # Metric extraction, aggregation, result writing
-      workload/           # Dynamic request generation
-      config-loader.js    # Loads and validates JSON configuration
-      matrix-builder.js   # Expands experiment matrix into experiment points
-      db-preparer.js      # Resets and seeds the database
-      target-resolver.js  # Maps backend names to base URLs
-      index.js            # Main benchmark runner entry point
+backends/                         # Systems under test
+  express/ springboot/ aspnet/ fastapi/
 
+benchmark/
   config/
     benchmark-policy.json
     data-states.json
     experiment-matrix.json
-
   scenarios/
-    s1-read-only.json
+    s1-read-only-paged.json
     s2-write.json
     s3-mixed-crud.json
+    s4-overload.json
+    s5-overload-write.json
+    s6-overload-mixed-crud.json
+  runner/
+    k6/
+      workload.js                 # Executed inside the k6 container
+    src/
+      execution/
+        experiment-runner.js
+        repetition-runner.js
+        run-k6.js                 # Spawns the k6 Docker container
+      results/
+        metrics.js
+        aggregate.js
+        result-writer.js
+      config-loader.js
+      db-preparer.js
+      matrix-builder.js
+      target-resolver.js
+      index.js                    # Entry point
+  results/
+    validation/
+    official/
 
-  results/                # Generated benchmark output
+db/                               # init / reset / seed SQL
+scripts/                          # reset/seed, parity, fairness
+docs/                             # this file, benchmark-fairness.md, diagrams/
+docker-compose.yml                # Postgres + four backends on benchmark-net
 ```
 
-Additional top-level directories in the repository include the backend implementations, database initialization/reset/seed files, Docker Compose configuration, and backend-specific helper scripts.
+---
+
+## 6. Benchmark Configuration
+
+The benchmark is controlled through JSON files rather than hardcoded runner logic:
+
+```text
+benchmark/config/benchmark-policy.json
+benchmark/config/data-states.json
+benchmark/config/experiment-matrix.json
+benchmark/scenarios/*.json
+```
+
+Together they define the measurement policy, the available data states, the scenarios and their operation weights, and which scenario × state × load-level combinations are executed. The runner code stays generic; experiments are data. The configuration loader validates all files (e.g. scenario weights must sum to 100; matrix entries must declare a valid load model).
 
 ---
 
-## Benchmark Methodology
+## 7. Benchmark Policy
 
-Each benchmark is executed as a series of **experiment points**.
+`benchmark-policy.json` defines global measurement behavior:
 
-An experiment point is defined by:
+| Setting               | Value      |
+| --------------------- | ---------- |
+| Warmup runs           | 1          |
+| Measured runs         | 5          |
+| Warmup duration       | 30 seconds |
+| Measured duration     | 60 seconds |
+| Reset before each run | true       |
+| Request timeout       | 30 seconds |
+| Aggregation           | median (performance), max (failures) |
 
-- a **scenario** (workload type)
-- a **data state** (initial database size)
-- a **concurrency level**
+Warmup runs stabilize the system (connection pools, caches, JIT) and are stored in the raw output but excluded from aggregation. The explicit per-request timeout ensures that stalled requests are counted as failures rather than hanging indefinitely — important for the open-model overload scenarios.
 
-### Execution Policy
+### Collected metrics
 
-For each experiment point:
-
-1. The database is reset and seeded into a defined state. Resetting and reseeding before each run ensures that every repetition starts from an identical logical database state, which is essential for reproducibility and fair comparison.
-2. One warmup run is executed.
-3. Five measured runs are executed.
-4. Metrics are extracted from each measured run.
-5. The final result is aggregated using the median.
-
-This approach reduces noise and improves the reproducibility of the results.
-
-Warmup runs are used exclusively to stabilize the system (e.g., connection pools, caches, and runtime optimizations). Metrics collected during warmup are **not included** in the final result aggregation.
-
-### Sequential Execution of Experiment Points
-
-Experiment points are executed sequentially rather than in parallel. This avoids interference between runs, such as shared CPU, memory, or I/O contention, and helps ensure that each measurement reflects only the selected workload conditions.
-
----
-
-## Fairness Assumptions
-
-To support meaningful comparison, the benchmark follows these assumptions:
-
-- all backends implement the same Todo API contract
-- all backends use PostgreSQL
-- all benchmarks use identical scenarios, data states, and concurrency levels
-- all runs follow the same warmup and repetition policy
-- database reset and seeding are performed consistently before each run
-- backend startup and runtime handling are standardized through Docker Compose as far as practically possible
-
-These assumptions do not remove all real-world differences, but they help ensure that the benchmark compares implementations under controlled and transparent conditions.
+| Metric | Source (k6) | Meaning |
+| ------ | ----------- | ------- |
+| `throughput` | `http_reqs` rate | requests per second |
+| `latency_median` | `http_req_duration` med | p50 latency |
+| `latency_p90` | `http_req_duration` p(90) | 90th percentile latency |
+| `latency_p99` | `http_req_duration` p(99) | 99th percentile latency |
+| `error_rate` | `http_req_failed` | share of failed HTTP responses (non-2xx/3xx, timeouts, dropped connections) |
+| `dropped_iteration_rate` | `dropped_iterations` rate | open-model only: iterations the generator could not start because all VUs were busy (load shedding) |
 
 ---
 
-## Benchmark Configuration
+## 8. Data States
 
-The benchmark is fully controlled via JSON configuration files. This allows workload definitions and measurement settings to be changed without modifying the runner code.
+`data-states.json` defines the initial database sizes:
 
-Together, these files define:
+| State  | Rows    | ID range |
+| ------ | ------- | -------- |
+| empty  | 0       | none     |
+| small  | 100     | 1–100    |
+| medium | 10,000  | 1–10,000 |
+| large  | 100,000 | 1–100,000 |
 
-- which workload should be generated
-- which data state should be used
-- which concurrency levels should be tested
-- how often runs should be repeated
-- which metrics should be reported
-
-This separation of configuration and execution is a central design decision of the benchmark framework.
+The ID range is used by the workload generator to produce valid `/todos/:id` paths and keyset cursors. A state with no ID range (e.g. `empty`) cannot be used for scenarios that require existing IDs.
 
 ---
 
-## Scenario Definitions
+## 9. Scenario Definitions
 
-Scenario files in `scenarios/` define the workload composition by specifying HTTP operations and their relative weights.
+Scenario files define the workload composition as weighted HTTP operations summing to 100.
 
-### S1 – Read-Only Baseline
+### S1 — Read-Only Paged (`s1-read-only-paged`, closed)
 
-- 80%: `GET /todos`
-- 20%: `GET /todos/:id`
+```text
+80% GET /todos?limit=100&afterId={{afterId}}   (keyset-paged list)
+20% GET /todos/:id                             (single-resource read)
+```
 
-This scenario represents a read-dominated workload and is used to analyze backend behavior under mostly retrieval-based traffic.
+The official read scenario. Collection reads use **keyset pagination**, so page cost is independent of table size and the data-state axis measures the framework, not PostgreSQL offset-scan cost.
 
-It is useful for examining:
+### S2 — Write Baseline (`s2-write`, closed)
 
-- the effect of dataset size on read performance
-- the effect of concurrency on read throughput
-- the stability of latency under read-heavy load
+```text
+100% POST /todos
+```
 
-### S2 – Write Baseline
-
-- 100%: `POST /todos`
-
-This scenario represents a pure create workload. All generated requests insert new todo items.
-
-It is useful for examining:
-
-- insert performance under load
-- write throughput stability
-- differences between read-heavy and write-heavy behavior
-
-Request bodies are generated dynamically from a template, for example:
+Pure create workload. Request bodies are generated from a template:
 
 ```json
-{
-  "title": "{{title}}",
-  "completed": false,
-  "order": "{{order}}"
-}
+{ "title": "{{title}}", "completed": false, "order": "{{order}}" }
 ```
 
-At runtime, placeholders such as `{{title}}` and `{{order}}` are replaced with generated values.
-
-### S3 – Mixed CRUD
-
-- 50%: `GET /todos`
-- 20%: `GET /todos/:id`
-- 15%: `POST /todos`
-- 15%: `PATCH /todos/:id`
-
-This scenario represents a mixed workload with both reads and writes. It is intended to approximate a more realistic application setting in which different types of operations occur together.
-
-`DELETE /todos/:id` is intentionally excluded from the official S3 performance workload. DELETE remains implemented in all backends and is still covered by API parity checks, but it is not part of the measured mixed workload.
-
-The reason is methodological: DELETE changes the availability of resources during a benchmark run. If a later request targets an already deleted todo item, the backend correctly returns `404 Not Found`. Load-testing tools classify such non-2xx responses as errors, which would make the benchmark error rate harder to interpret.
-
-Therefore, the official S3 workload avoids destructive operations and focuses on read, create, and update behavior.
-
-It is useful for examining:
-
-- how reads and writes interact under load
-- whether contention changes latency behavior
-- whether mixed workloads reveal bottlenecks not visible in pure baseline scenarios
-- how backends behave under a non-destructive mixed workload
-
----
-
-## Benchmark Policy
-
-The file `benchmark-policy.json` defines the global execution and measurement policy for all experiments.
-
-Current policy:
-
-- **Warmup runs:** 1
-- **Measured runs:** 5
-- **Warmup duration:** 30 seconds
-- **Measured duration:** 60 seconds
-- **Reset before each run:** true
-- **Aggregation method:** median
-
-### Collected Metrics
-
-The benchmark currently reports:
-
-- **throughput**
-- **latency_median**
-- **latency_p90**
-- **latency_p99**
-- **error_rate**
-
-The error rate represents the proportion of failed requests relative to the best available request count reported by the load generator. This includes non-success HTTP responses (non-2xx), timeouts, and connection-level failures.
-
-These metrics provide both a general performance view and a view of tail latency and stability.
-
----
-
-## Data States
-
-The file `data-states.json` defines the initial database sizes used during benchmarking.
-
-| State  | Rows    |
-| ------ | ------- |
-| empty  | 0       |
-| small  | 100     |
-| medium | 10,000  |
-| large  | 100,000 |
-
-In addition to row counts, each state also defines a valid ID range. This is necessary for operations such as:
-
-- `GET /todos/:id`
-- `PATCH /todos/:id`
-- `DELETE /todos/:id`
-
-The request generator uses the configured ID range to dynamically generate valid resource paths.
-
----
-
-## Experiment Matrix
-
-The file `experiment-matrix.json` defines which scenario/state/concurrency combinations are actually executed.
-
-Current matrix:
-
-- **S1 Read-Only**
-
-  - states: `small`, `medium`, `large`
-  - concurrency: `1`, `8`, `32`
-
-- **S2 Write**
-
-  - states: `empty`, `small`
-  - concurrency: `1`, `8`, `32`
-
-- **S3 Mixed CRUD**
-
-  - states: `medium`
-  - concurrency: `8`, `32`
-
-### Expansion into Experiment Points
-
-This expands to:
-
-- 9 experiment points for `s1-read-only`
-- 6 experiment points for `s2-write`
-- 2 experiment points for `s3-mixed-crud`
-
-Total:
-
-- **17 experiment points per backend**
-- **68 experiment points across 4 backends**
-
-Since each experiment point contains:
-
-- 1 warmup run
-- 5 measured runs
-
-the full number of executions is substantial, which makes automated execution essential.
-
----
-
-## Workload Generation
-
-Requests are generated dynamically at runtime.
-
-The workload system is responsible for:
-
-- selecting operations according to configured weights
-- resolving dynamic paths such as `/todos/:id`
-- generating request bodies from templates
-- producing backend-independent HTTP request definitions for the runner
-
-This design allows the same benchmark logic to be reused across all backends.
-
----
-
-## Workload Execution and Concurrency Model
-
-### Overview
-
-The benchmark framework separates **workload definition** from **workload execution**.
-
-Scenario files define the structure and composition of the traffic to be generated, while the benchmark runner is responsible for turning those scenario definitions into actual concurrent HTTP requests against the selected backend.
-
-Concurrency in this benchmark refers to the number of simultaneous client connections generated against the target backend. The benchmark runner itself executes experiment points sequentially, but within each experiment point, concurrent HTTP traffic is generated according to the configured concurrency level.
-
-### Execution Flow
-
-For each selected experiment point, the benchmark runner performs the following steps:
-
-1. Load the selected scenario, data state, and concurrency level
-2. Reset and seed the corresponding backend database
-3. Create a fresh scenario runtime for the run
-4. Dynamically generate requests according to the scenario definition
-5. Execute a warmup run
-6. Execute the measured runs
-7. Extract throughput, latency, and error metrics
-8. Aggregate the measured results using the median
-9. Write the results to the output directory
-
-### Sequential Experiments vs Concurrent Requests
-
-An important distinction in the framework is the difference between:
-
-- **sequential experiment execution**
-- **concurrent request execution within one experiment**
-
-The benchmark runner does **not** run multiple experiment points in parallel. Instead, experiment points are executed one after another to avoid interference between runs.
-
-However, within a single experiment point, the load generator sends multiple requests concurrently according to the configured concurrency level.
-
-This means the benchmark follows the model:
-
-**sequential experiment scheduling + concurrent HTTP request execution**
-
-### Concurrency Definition
-
-In this framework, concurrency means:
-
-- the number of simultaneous client connections opened against the backend
-- not the number of manually created benchmark worker threads
-- not the number of parallel experiment runner processes
-
-For example:
-
-- concurrency `1` represents a minimal baseline load
-- concurrency `8` represents light concurrent traffic
-- concurrency `32` represents a stronger concurrent workload
-
-The actual internal handling of that incoming concurrency is left to the backend runtime and framework implementation.
-
-The load generator uses `pipelining: 1`, meaning each connection processes requests sequentially without HTTP pipelining. Concurrency is therefore expressed through multiple simultaneous connections rather than multiple in-flight requests on a single connection. This simplifies the load model and improves comparability across backends.
-
-### Scenario Runtime and Request Generation
-
-Scenario execution is configuration-driven.
-
-The process is:
-
-1. Scenario JSON files define the weighted operation mix
-2. The configuration loader reads the scenario definitions
-3. The scenario runtime creates a request generator for the selected scenario
-4. For each outgoing request, the generator:
-
-   - selects an operation according to its configured weight
-   - resolves dynamic paths such as `/todos/:id`
-   - generates request bodies from templates when needed
-
-As a result, the workload is not a static replay of predefined requests. Instead, requests are generated dynamically throughout the benchmark run.
-
-### Concurrency Handling in the Runner
-
-The benchmark runner itself does not implement custom worker-thread, thread-pool, or multi-process orchestration for benchmark traffic generation.
-
-Its role is to:
-
-- orchestrate benchmark execution
-- prepare database state
-- generate request definitions
-- invoke the load generator
-- collect and aggregate metrics
-
-The actual concurrent HTTP traffic is produced by the load generation layer.
-
-This keeps the benchmark runner architecture simple and makes the concurrency model easier to reason about and reproduce.
-
-### Backend-Side Concurrency
-
-While the benchmark generates the same external concurrency model for all backends, each backend handles incoming requests according to its own runtime architecture.
-
-Examples:
-
-- **Express (Node.js)** typically uses an event-loop-based asynchronous model
-- **Spring Boot** commonly uses a thread-pool-based request handling model
-- **ASP.NET** uses a managed runtime with asynchronous request handling and thread-pool scheduling
-- **FastAPI** typically runs on an ASGI-based asynchronous execution model
-
-This is an intentional design decision. The benchmark standardizes the external load conditions, while allowing each backend to respond using its natural framework-specific concurrency model.
-
-### Why This Matters
-
-This design allows the benchmark to measure:
-
-- how throughput changes under increasing concurrent load
-- how latency behaves under contention
-- whether a backend degrades gracefully at higher concurrency
-- whether error rates increase under mixed or heavier workloads
-
-By documenting the concurrency model explicitly, the methodology becomes easier to understand, evaluate, and reproduce.
-
-### Concurrency and Request Workflow Diagram
+### S3 — Mixed CRUD (`s3-mixed-crud`, closed)
 
 ```text
-                         BENCHMARK WORKLOAD EXECUTION FLOW
-
-┌──────────────────────────────┐
-│ Configuration Files          │
-│------------------------------│
-│ benchmark-policy.json        │
-│ data-states.json             │
-│ experiment-matrix.json       │
-│ scenarios/*.json             │
-└──────────────┬───────────────┘
-               │
-               ▼
-┌──────────────────────────────┐
-│ config-loader.js             │
-│------------------------------│
-│ Loads and validates config   │
-└──────────────┬───────────────┘
-               │
-               ▼
-┌──────────────────────────────┐
-│ matrix-builder.js            │
-│------------------------------│
-│ Expands matrix into concrete │
-│ experiment points            │
-└──────────────┬───────────────┘
-               │
-               ▼
-┌──────────────────────────────┐
-│ index.js                     │
-│------------------------------│
-│ Main benchmark orchestrator  │
-│ Runs experiment points       │
-│ sequentially                 │
-└──────────────┬───────────────┘
-               │
-               ▼
-┌──────────────────────────────┐
-│ experiment-runner.js         │
-│------------------------------│
-│ Runs one experiment point    │
-└──────────────┬───────────────┘
-               │
-               ▼
-┌──────────────────────────────┐
-│ repetition-runner.js         │
-│------------------------------│
-│ Warmup + measured runs       │
-└───────┬────────────────┬─────┘
-        │                │
-        ▼                ▼
-┌──────────────────┐   ┌──────────────────────────────┐
-│ db-preparer.js   │   │ scenario-runtime.js          │
-│------------------│   │------------------------------│
-│ Reset + seed DB  │   │ Creates runtime request flow │
-└────────┬─────────┘   └──────────────┬───────────────┘
-         │                            │
-         ▼                            ▼
-┌──────────────────┐       ┌──────────────────────────┐
-│ Shell Scripts    │       │ request-generators.js    │
-│------------------│       │--------------------------│
-│ reset / seed     │       │ weighted operation pick  │
-│ backend-specific │       │ path resolution          │
-│ DB preparation   │       │ body template generation │
-└──────────────────┘       └──────────────┬───────────┘
-                                           │
-                                           ▼
-                              ┌──────────────────────────┐
-                              │ run-autocannon.js        │
-                              │--------------------------│
-                              │ sends concurrent HTTP    │
-                              │ requests for one run     │
-                              └──────────────┬───────────┘
-                                             │
-                     concurrency = simultaneous client connections
-                                             │
-                                             ▼
-                              ┌──────────────────────────┐
-                              │ Target Backend Container │
-                              │--------------------------│
-                              │ Express / Spring Boot /  │
-                              │ ASP.NET / FastAPI        │
-                              └──────────────┬───────────┘
-                                             │
-                                             ▼
-                              ┌──────────────────────────┐
-                              │ PostgreSQL Database      │
-                              └──────────────┬───────────┘
-                                             │
-                                             ▼
-                              ┌──────────────────────────┐
-                              │ metrics.js               │
-                              │ aggregate.js             │
-                              │ result-writer.js         │
-                              └──────────────┬───────────┘
-                                             │
-                                             ▼
-                              ┌──────────────────────────┐
-                              │ benchmark/results/...    │
-                              └──────────────────────────┘
+55% GET /todos?limit=100&afterId={{afterId}}
+15% GET /todos/:id
+15% POST /todos
+15% PATCH /todos/:id
 ```
 
----
+A non-destructive mixed workload. `DELETE` is implemented and parity-tested but **excluded** from the measured mix: it changes resource availability mid-run, so later requests to a deleted ID return `404`, which load generators count as errors and which would distort the error-rate interpretation. All reads are bounded (keyset-paged or by-id), so results reflect request handling rather than full-table serialization.
 
-## Containerization and Runtime Consistency
+### S4 / S5 / S6 — Open-model overload probes
 
-All backend implementations are containerized and started through Docker Compose. This provides a consistent execution model across all systems under test.
+These mirror the operation mix of S1 / S2 / S3 respectively, but are driven by the **open load model** (fixed request arrival rate). They exist to measure the breaking point rather than the plateau.
 
-Containerization is used here to improve methodological consistency by ensuring that:
-
-- each backend is started in the same operational manner
-- each backend runs in an isolated service container
-- all backends connect to the same shared PostgreSQL service model
-- startup, shutdown, and verification can be automated uniformly
-- local environment differences are reduced
-
-The benchmark does not rely on manually starting each framework in a different way. Instead, all backends follow the same container-based process, which helps provide a more comparable starting point.
+| Open scenario | Mirrors | Mix |
+| ------------- | ------- | --- |
+| `s4-overload` | S1 | 80% paged list, 20% get-by-id |
+| `s5-overload-write` | S2 | 100% create |
+| `s6-overload-mixed-crud` | S3 | 55/15/15/15 |
 
 ---
 
-## Backend Implementation Example
+## 10. Load Models
 
-### Express Backend Example Architecture
+Each matrix entry declares a `loadModel`. It determines the k6 executor and the numeric axis that is swept.
+
+| Load model | k6 executor | Numeric axis | What it measures |
+| ---------- | ----------- | ------------ | ---------------- |
+| `closed` | `constant-vus` | `concurrency` = virtual users (connections) | Throughput plateau and latency growth. Self-throttling: each VU waits for the previous response, so the backend cannot be overloaded; `error_rate` stays ~0 by construction. |
+| `open` | `constant-arrival-rate` | `arrivalRates` = target requests/second (capped by `maxVus`) | Breaking point. The offered rate is injected regardless of whether the backend keeps up. |
+
+Why both: a closed model answers "how fast can it go and how does latency grow", but it cannot reveal saturation failures. The open model answers "how many requests per second until it breaks":
+
+- `error_rate` rises when requests time out or return non-2xx/3xx.
+- `dropped_iteration_rate` rises when k6 exhausts `maxVus` and can no longer deliver the offered rate — generator-side load shedding.
+
+This separation directly addresses a known pitfall: under a maxed-out closed model, observed failures can be client-side timeouts rather than backend behavior. The open model plus an explicit request timeout plus the distinction between dropped iterations and HTTP errors makes overload behavior attributable to the backend.
+
+---
+
+## 11. Experiment Matrix
+
+`experiment-matrix.json` defines which combinations run.
+
+| Scenario | Load model | States | Load levels | Points |
+| -------- | ---------- | ------ | ----------- | -----: |
+| `s1-read-only-paged` | closed | small, medium, large | concurrency 1, 8, 32, 64, 128 | 15 |
+| `s2-write` | closed | empty, small | concurrency 1, 8, 32 | 6 |
+| `s3-mixed-crud` | closed | medium | concurrency 8, 32, 64 | 3 |
+| `s4-overload` | open | medium | rate 1000, 2000, 4000, 8000, 16000, 32000 (maxVus 2000) | 6 |
+| `s5-overload-write` | open | empty, small | rate 1000…32000 (maxVus 2000) | 12 |
+| `s6-overload-mixed-crud` | open | medium | rate 1000…32000 (maxVus 2000) | 6 |
+
+Total: **48 experiment points per backend**, **192 across four backends**. Each point runs 1 warmup + 5 measured repetitions, which makes automated execution essential. A full matrix takes roughly 4–5 hours per backend.
+
+The matrix builder (`matrix-builder.js`) normalizes both load models into a single `loadLevel` axis (VUs for closed, req/s for open) so the rest of the pipeline is model-agnostic.
+
+---
+
+## 12. Keyset Pagination Contract
+
+Official read scenarios use keyset pagination: `GET /todos?limit=100&afterId=…`, translated to `WHERE id > :afterId ORDER BY id ASC LIMIT :limit`. All backends must:
+
+- Return the full table when **no** `limit` or `afterId` query parameter is present.
+- Apply keyset pagination when **either** parameter is present.
+- Default an invalid `limit` to **100**, cap a valid `limit` at **500**.
+- Default an invalid `afterId` to **0**.
+
+Keyset pagination keeps page cost O(log n) regardless of table depth, so the data-state axis does not measure offset-scan cost. The unbounded `GET /todos` remains in the API (and is parity-tested) but is not used by the benchmark scenarios. Parity scripts verify this contract against the Express reference.
+
+---
+
+## 13. Workload Generation
+
+Workload generation happens inside the k6 container, driven by `benchmark/runner/k6/workload.js`. The runner passes the scenario operations and data-state metadata to k6 via environment variables. For each request the script:
+
+- selects an operation according to its weight (weights expand into a 100-entry pool)
+- resolves dynamic paths: `/todos/:id` uses a random ID in the state's `idMin…idMax`; `{{afterId}}` resolves to a random keyset cursor so each page request lands on a real, full page
+- fills body templates: `{{title}}`, `{{order}}`, `{{completed}}`
+- applies the configured per-request timeout
+
+The executor (closed `constant-vus` vs open `constant-arrival-rate`) is chosen from the `loadModel` passed by the runner.
+
+---
+
+## 14. Database Preparation
+
+Database preparation is handled by `benchmark/runner/src/db-preparer.js`, which resolves a backend-specific reset-and-seed script:
 
 ```text
-┌────────────────────────────┐
-│ 1. Startup Layer           │
-├────────────────────────────┤
-│ server.js                  │
-│ - starts application       │
-│ - checks DB connectivity   │
-│ - handles shutdown         │
-└──────────────┬─────────────┘
-               │
-               ▼
-┌────────────────────────────┐
-│ 2. Application Setup Layer │
-├────────────────────────────┤
-│ app.js                     │
-│ - builds Express app       │
-│ - configures middleware    │
-│ - registers routes         │
-│ - registers error handling │
-└──────────────┬─────────────┘
-               │
-               ▼
-┌────────────────────────────┐
-│ 3. Routing Layer           │
-├────────────────────────────┤
-│ todo-routes.js             │
-│ - maps endpoints to        │
-│   controller functions     │
-└──────────────┬─────────────┘
-               │
-               ▼
-┌────────────────────────────┐
-│ 4. Controller Layer        │
-├────────────────────────────┤
-│ todo-controller.js         │
-│ - handles HTTP request     │
-│ - calls service functions  │
-│ - sends HTTP responses     │
-└──────────────┬─────────────┘
-               │
-               ▼
-┌────────────────────────────┐
-│ 5. Service Layer           │
-├────────────────────────────┤
-│ todo-service.js            │
-│ - validation               │
-│ - business rules           │
-│ - AppError handling logic  │
-└──────────────┬─────────────┘
-               │
-               ▼
-┌────────────────────────────┐
-│ 6. Repository Layer        │
-├────────────────────────────┤
-│ todo-repository.js         │
-│ - SQL statements           │
-│ - CRUD access to todos     │
-└──────────────┬─────────────┘
-               │
-               ▼
-┌──────────────────────────────┐
-│ 7. Database Access Layer     │
-├──────────────────────────────┤
-│ config/database.js           │
-│ - PostgreSQL connection      │
-│ - shared query() helper      │
-│ - connection pool management │
-└──────────────┬───────────────┘
-               │
-               ▼
-┌────────────────────────────┐
-│ 8. Database                │
-├────────────────────────────┤
-│ PostgreSQL                 │
-│ - todos table              │
-└──────────────┬─────────────┘
-               │
-               ▼
-┌────────────────────────────┐
-│ 9. Serialization Layer     │
-├────────────────────────────┤
-│ todo-serializer.js         │
-│ - converts DB rows into    │
-│   API response objects     │
-└──────────────┬─────────────┘
-               │
-               ▼
-┌────────────────────────────┐
-│ 10. Middleware Layer       │
-├────────────────────────────┤
-│ error-handler.js           │
-│ - handles AppError         │
-│ - handles JSON errors      │
-│ - handles internal errors  │
-│                            │
-│ not-found.js               │
-│ - handles unknown routes   │
-└────────────────────────────┘
+express    → scripts/express/reset-and-seed-express-db-state.sh
+springboot → scripts/springboot/reset-and-seed-springboot-db-state.sh
+aspnet     → scripts/aspnet/reset-and-seed-aspnet-db-state.sh
+fastapi    → scripts/fastapi/reset-and-seed-fastapi-db-state.sh
 ```
 
-### Express Backend Workflow
-
-- `server.js` starts the application after verifying database connectivity
-- `app.js` configures middleware and registers API routes
-- `todo-routes.js` maps HTTP endpoints to controller functions
-- `todo-controller.js` handles request/response flow and delegates to the service layer
-- `todo-service.js` validates input, applies business rules, and throws `AppError` when needed
-- `todo-repository.js` executes SQL queries for CRUD operations on the `todos` table
-- `config/database.js` manages the PostgreSQL connection pool and query execution
-- `todo-serializer.js` transforms database rows into the public API response format
-- `error-handler.js` and `not-found.js` provide centralized error and 404 handling
-
-This example illustrates one concrete backend implementation. The other backends follow the same benchmark methodology and API contract, even though their internal implementation structure differs by framework and language.
+When `resetBeforeEachRun` is enabled, the selected backend database is reset and seeded before every warmup and every measured repetition, so each run starts from an identical logical state.
 
 ---
 
-## Environment Preparation
+## 15. Result Processing and Aggregation
 
-Before running benchmarks, the test machine should be prepared to reduce external noise and improve result consistency.
+Relevant files: `results/metrics.js`, `results/aggregate.js`, `results/result-writer.js`.
 
-### Recommended Preparation Steps
+### Extraction
 
-- close unnecessary applications before starting the benchmark
-- check **Activity Monitor**, **Task Manager**, or the Linux system monitor equivalent
-- quit background applications that may consume CPU, memory, disk I/O, or network resources
-- avoid running unrelated development tools, browser sessions, sync clients, media applications, or large downloads during measurement
-- ensure Docker is running properly before starting the benchmark
-- if possible, allow the benchmark machine to remain otherwise idle during official runs
+Metrics are read from the k6 `--summary-export` JSON (see the metrics table in [Section 7](#7-benchmark-policy)). `dropped_iteration_rate` is only emitted by the open-model executor and is `0` for closed-model runs.
 
-This is especially important because benchmark results can be influenced by competing system activity outside the benchmark itself.
+### Aggregation
 
----
+Each metric is aggregated independently across the five measured repetitions:
 
-## Command Execution Location
+- **Performance metrics** (`throughput`, `latency_median`, `latency_p90`, `latency_p99`) → **median**, which is robust to outliers.
+- **Failure metrics** (`error_rate`, `dropped_iteration_rate`) → **max**, on purpose: a single repetition where the backend failed or the generator shed load is exactly the breaking-point signal and must not be discarded by a median.
 
-All commands in this project should be executed from the **repository root folder**.
-
-This is important because:
-
-- Docker Compose expects to be run from the project root
-- helper scripts resolve paths relative to the repository root
-- benchmark execution, database reset/seed scripts, and backend startup scripts rely on the root-level directory structure
-
-Running commands from subfolders may lead to incorrect path resolution or missing-file errors.
-
-All command examples in this README assume that the current working directory is the repository root.
+Per-repetition values are preserved in `raw-results.json` so the aggregation choice can be re-examined.
 
 ---
 
-## Starting the Environment
+## 16. Result Output
 
-Before running benchmarks, start the required services.
+Each run creates a timestamped directory:
 
-### Start PostgreSQL and one backend
-
-Example for Express:
-
-```bash
-docker compose up -d postgres express
+```text
+benchmark/results/<validation|official>/<backend>/<timestamp>/
+  raw-results.json     # per-repetition detail + aggregated metrics + execution metadata
+  summary.csv          # one row per experiment point
+  run-metadata.json    # category, backend, target URL, k6 image, network, policy, filters, timing
 ```
 
-Example for Spring Boot:
+`summary.csv` columns:
 
-```bash
-docker compose up -d postgres springboot
+```text
+backend, scenarioId, stateName, loadModel, loadLevel,
+throughput, latency_median, latency_p90, latency_p99,
+error_rate, dropped_iteration_rate
 ```
 
-Example for ASP.NET:
-
-```bash
-docker compose up -d postgres aspnet
-```
-
-Example for FastAPI:
-
-```bash
-docker compose up -d postgres fastapi
-```
-
-The repository also provides helper scripts for starting, stopping, resetting, seeding, and verifying each backend.
+`loadLevel` is the virtual-user count for closed-model rows and the target requests/second for open-model rows.
 
 ---
 
-## Running the Benchmark
+## 17. API Parity Verification
 
-The benchmark runner should be started from the **repository root directory**.
+Before performance benchmarking, the non-Express backends are checked for strict API parity against the **Express reference**. This avoids all-pairs comparison: if each backend matches Express, they are treated as functionally equivalent.
 
-### Basic Command
-
-```bash
-node benchmark/runner/src/index.js --category validation --backend express
-```
-
-### Parameters
-
-| Flag            | Description                                                   |
-| --------------- | ------------------------------------------------------------- |
-| `--backend`     | Target backend (`express`, `springboot`, `aspnet`, `fastapi`) |
-| `--category`    | Result category (`validation` or `official`)                  |
-| `--scenario`    | Optional filter by scenario                                   |
-| `--state`       | Optional filter by data state                                 |
-| `--concurrency` | Optional filter by concurrency                                |
-
-### Example
-
-Run the read-only scenario on the medium dataset with concurrency 8 for the Express backend:
-
-```bash
-node benchmark/runner/src/index.js \
-  --category validation \
-  --backend express \
-  --scenario s1-read-only \
-  --state medium \
-  --concurrency 8
-```
-
----
-
-## Running Helper Scripts
-
-Helper scripts should also be executed from the **repository root directory**.
-
-Examples:
-
-```bash
-./scripts/express/start-express-backend.sh
-./scripts/express/reset-and-seed-express-db-state.sh small
-./scripts/express/verify-express-cycle.sh
-```
-
-Equivalent scripts are available for the other backends as well.
-
-In addition to backend lifecycle and database helper scripts, the repository also contains dedicated **API parity verification scripts** for comparing ASP.NET, FastAPI, and Spring Boot against the Express reference implementation. These are described in the next section.
-
----
-
-## API Parity Verification
-
-Before performance benchmarking, the backend implementations are checked for strict API parity.
-
-Express serves as the reference implementation for API parity verification. The other backends are validated against Express rather than through all pairwise backend-to-backend comparisons. Once each backend matches the same reference behavior, they are treated as functionally equivalent for the subsequent performance benchmark.
-
-The purpose of these parity checks is to ensure that all benchmarked systems expose equivalent externally visible behavior. This is important because performance results are only meaningful when the compared systems implement the same contract and handle edge cases consistently.
-
-### Reference Backend
-
-The **Express backend** is used as the reference implementation.
-
-The other backends are compared against Express:
-
-- ASP.NET
-- FastAPI
-- Spring Boot
-
-### What the Parity Scripts Check
-
-The parity scripts compare the following aspects of API behavior:
+### What is compared
 
 - numeric HTTP status codes
 - relevant response headers
-- JSON response body structure
-- exact error messages
-- malformed JSON handling
-- invalid ID handling
-- unknown route handling
-- partial update semantics
-- delete semantics
+- JSON response body structure and exact error messages
+- malformed JSON, invalid IDs, unknown routes
+- partial update (PATCH) and delete semantics
+- keyset pagination semantics (`?limit=`, `?afterId=`, limit cap, invalid values, empty page, benchmark page)
 - selected validation edge cases
 
-Examples of tested cases include:
+### Deterministic setup
 
-- `GET /todos`
-- `GET /todos/:id`
-- `GET /todos/abc`
-- `GET` unknown route
-- valid `POST /todos`
-- malformed JSON in `POST`
-- invalid field types in `POST`
-- `PATCH` with `order: null`
-- `PATCH` with unknown fields
-- `PATCH` with invalid IDs
-- `DELETE /todos/:id`
-- `DELETE /todos`
-- `GET /todos` after delete-all
-
-### Deterministic Test Setup
-
-Each parity script performs the following steps:
-
-1. verify that both compared backends are reachable
-2. reset both databases into a clean state
-3. seed deterministic initial todo rows
-4. capture the created IDs dynamically
-5. run the same logical HTTP test cases against both backends
-6. normalize backend-specific response differences that are not semantically relevant
-7. compare status codes, headers, and bodies
-
-This makes the parity process reproducible and suitable for repeated validation during development.
-
-### Normalization Rules
-
-The parity scripts normalize certain transport-level differences so that comparisons focus on API semantics rather than framework-specific HTTP formatting.
-
-Examples include:
-
-- comparison of **numeric HTTP status codes** instead of full reason phrases
-- removal of unstable transport headers such as `Date`, `Content-Length`, and `Transfer-Encoding`
-- normalization of JSON content type variants such as `application/json; charset=utf-8`
-- replacement of backend-specific base URLs in response bodies with a placeholder value
-
-These normalizations are intentional and methodology-driven. They do not weaken the comparison; they prevent false mismatches caused by framework-level HTTP formatting differences that are not part of the benchmarked API contract.
-
-### Available Parity Scripts
-
-The repository includes the following comparison scripts:
+Each script verifies both backends are reachable, resets both databases, seeds the deterministic `small` state, captures created IDs dynamically, runs the same logical cases against both backends, normalizes irrelevant transport differences (numeric status codes, unstable headers such as `Date`, JSON content-type variants, backend-specific base URLs), and compares status, headers, and body.
 
 ```bash
 ./scripts/compare-express-aspnet-parity.sh
@@ -985,123 +439,110 @@ The repository includes the following comparison scripts:
 ./scripts/compare-express-springboot-parity.sh
 ```
 
-### Running the Parity Checks
-
-All commands should be run from the repository root.
-
-Example: Express vs ASP.NET
-
-```bash
-docker compose up -d postgres express aspnet
-./scripts/compare-express-aspnet-parity.sh
-```
-
-Example: Express vs FastAPI
-
-```bash
-docker compose up -d postgres express fastapi
-./scripts/compare-express-fastapi-parity.sh
-```
-
-Example: Express vs Spring Boot
-
-```bash
-docker compose up -d postgres express springboot
-./scripts/compare-express-springboot-parity.sh
-```
-
-### Interpreting the Output
-
-For each test case, the scripts report:
-
-- `Status: MATCH`
-- `Headers: MATCH`
-- `Body: MATCH`
-
-A backend is considered parity-aligned with the Express reference implementation when all tested cases match under the defined normalization rules.
-
-### Role in the Overall Methodology
-
-The parity scripts are part of the benchmark validation workflow.
-
-They are used to confirm that:
-
-- backend implementations remain contract-equivalent during development
-- performance comparisons are not distorted by API behavior differences
-- bug fixes and refactorings do not silently introduce behavioral drift
-
-In this way, parity checking supports the fairness, reproducibility, and methodological transparency of the benchmark framework.
+Parity scripts verify **HTTP behavior only**. CPU limits, worker counts, and pool sizes are verified separately (see Section 18).
 
 ---
 
-## Results
+## 18. Fairness Contract (Option B)
 
-Each benchmark run produces a timestamped results directory:
+To keep the comparison fair, every backend runs under the same production-style runtime budget, documented in [`docs/benchmark-fairness.md`](benchmark-fairness.md) and verified by `scripts/verify-benchmark-fairness.sh`.
+
+| Resource | Setting |
+| -------- | ------- |
+| Backend container | 4 CPUs |
+| PostgreSQL container | 2 CPUs |
+| k6 container | 2 CPUs |
+| Total DB connection pool | 20 per backend |
+| Network | `benchmark-net` (container-to-container) |
+| Load generator image | `grafana/k6:2.0.0` |
+
+Pool composition: Express and FastAPI run 4 workers × 5 connections; Spring Boot (Hikari) and ASP.NET use a single 20-connection pool. Production runtime flags are set per backend (`NODE_ENV=production`, `ASPNETCORE_ENVIRONMENT=Production`, FastAPI without dev docs, Spring Boot production profile).
+
+`verify-benchmark-fairness.sh [backend|all]` checks: container `NanoCpus`, worker/process counts, pool environment/config, `benchmark-net` membership, Postgres CPU, and the presence of the k6 image. It runs in seconds and should be run after every `docker compose up --build`.
+
+> Caveat: on Apple Silicon the cores are heterogeneous. `--cpus` is applied equally to all backends so the comparison is fair, but absolute numbers are machine-specific and should not be generalized.
+
+---
+
+## 19. Containerization and the Dockerized Load Generator
+
+All backends and PostgreSQL run through Docker Compose, started outside the runner (the runner assumes the selected backend and Postgres are up).
+
+The load generator also runs as a container: for each warmup/measured repetition, `run-k6.js` spawns `docker run --rm --network benchmark-net --cpus 2 grafana/k6:2.0.0 …`, mounts `k6/workload.js`, passes the scenario/state/load-model via environment variables, and reads back the `--summary-export` JSON. Running k6 on `benchmark-net` (rather than over published host ports) avoids Docker Desktop host-proxy latency and keeps the load path container-to-container.
+
+---
+
+## 20. Express Backend Example
+
+Express is the parity reference. Its layered structure:
 
 ```text
-benchmark/results/<category>/<backend>/<timestamp>/
+server.js → app.js → todo-routes.js → todo-controller.js
+→ todo-service.js → todo-repository.js → config/database.js → PostgreSQL
 ```
 
-The following files are written:
+| Layer | Responsibility |
+| ----- | -------------- |
+| `server.js` | Starts the app, checks DB connectivity, handles shutdown |
+| `app.js` | Configures middleware, routes, error handling |
+| `todo-routes.js` | Maps endpoints to controller functions |
+| `todo-controller.js` | Request/response flow |
+| `todo-service.js` | Validation and business rules |
+| `todo-repository.js` | SQL queries (incl. keyset pagination) |
+| `config/database.js` | PostgreSQL connection pool |
+| `todo-serializer.js` | DB rows → API response shape |
+| `error-handler.js`, `not-found.js` | Centralized error and 404 handling |
 
-- `raw-results.json`
-  Full detailed results, including warmup and measured run data
-
-- `summary.csv`
-  Compact summary of the aggregated metrics
-
-- `run-metadata.json`
-  Metadata about the benchmark run, including filters, target backend, and execution timing
-
----
-
-## Key Design Decisions
-
-### Separation of Configuration and Execution
-
-All benchmark parameters are externalized into JSON files. This improves:
-
-- reproducibility
-- transparency
-- extensibility
-
-### Median Aggregation
-
-Median is used instead of arithmetic mean to reduce the influence of outliers and short-lived measurement noise.
-
-### Database Reset Before Each Run
-
-Each warmup and measured run starts from a defined database state. This ensures consistent and comparable starting conditions.
-
-### Weighted Scenario Definitions
-
-Operation weights allow realistic and reusable workload descriptions while keeping the scenario format simple.
-
-### Shared Methodology Across Backends
-
-All backends implement the same API contract and are executed under the same benchmark policy, which supports fairer comparison.
-
-### Containerized Backend Execution
-
-All backends are executed as containers, providing a uniform runtime model and reducing differences in manual startup procedures.
+For production load, Express runs under a cluster of workers (`WEB_CONCURRENCY=4`), each with a 5-connection pool. The other backends follow the same API contract and benchmark methodology with framework-specific internals.
 
 ---
 
-## Limitations
+## 21. Environment Preparation and Execution Rules
 
-While the benchmark framework is designed to provide fair and reproducible comparisons, several limitations should be noted:
+### Preparation for official runs
 
-- Results are influenced by the underlying hardware and local execution environment
-- Containerization improves consistency but does not eliminate all runtime differences
-- Framework-specific optimizations and runtime characteristics remain part of what is being measured
-- Network stack behavior and operating system scheduling may introduce variability under high load
+- close unnecessary applications; quit background CPU/IO/network consumers
+- ensure Docker is running and the fairness contract passes
+- allow the machine to remain otherwise idle during official runs
 
-These factors should be considered when interpreting benchmark results.
+### Execution rules
+
+- Run Compose and helper scripts from the **repository root** (paths resolve relative to root).
+- Run backends **one at a time**, sequentially; do not bring Compose down between them, so the fairness contract stays intact.
+- Use a standalone terminal with `caffeinate -dims` so a multi-hour run is not interrupted by editor closure or sleep.
+
+```bash
+# from repo root
+docker compose up -d --build
+./scripts/verify-benchmark-fairness.sh all
+
+# from benchmark/runner
+caffeinate -dims node src/index.js --category official --backend springboot
+```
+
+Optional filters (`--scenario`, `--state`, `--concurrency`) select a subset; `--concurrency` filters the `loadLevel` (VUs for closed, req/s for open).
 
 ---
 
-## Summary
+## 22. Design Decisions
 
-This project provides a configurable and reproducible benchmarking framework for RESTful backend systems. By combining structured workload definitions, controlled database states, repeated measurement, consistent result aggregation, and containerized backend execution, it supports meaningful performance analysis across multiple backend technologies.
+- **Configuration-driven benchmarking.** Settings are externalized into JSON for reproducibility, transparency, and extensibility.
+- **Two load models.** Closed (`constant-vus`) for plateau/latency; open (`constant-arrival-rate`) for breaking point. Stress is a load dimension applied to existing workloads, not a separate scenario.
+- **Median for performance, max for failures.** Robust central tendency for latency/throughput; worst-case visibility for errors and load shedding.
+- **Keyset pagination.** Keeps read cost independent of table size so the data-state axis measures the framework.
+- **Reset before each run.** Identical starting conditions for every repetition.
+- **Express as parity reference.** Functional equivalence is established against one reference rather than all pairs.
+- **Non-destructive S3.** DELETE is excluded from the measured mix to avoid expected-404 noise in the error rate.
+- **Dockerized, container-to-container load.** Controlled load-generator budget and no host-proxy latency.
 
-The benchmark framework is designed not only to produce results, but also to make the methodology itself transparent, explainable, and extensible.
+---
+
+## 23. Limitations
+
+- Results depend on the hardware and OS; absolute numbers are machine-specific (notably Apple Silicon heterogeneous cores).
+- The benchmark is **end-to-end**: persistence access is part of the measured path. Results reflect comparable backend behavior under a controlled common API and persistence strategy, not isolated framework-kernel speed. The database strategy is standardized but its effects are controlled, not eliminated.
+- Containerization improves consistency but does not remove all runtime differences.
+- Framework-specific runtime behavior (event loop, thread pools, GC, ASGI workers) remains part of what is measured — by design.
+- Load generator and backend run on the same machine; cross-process interference is reduced (CPU limits, separate containers) but not fully eliminated. A two-machine setup is future work.
+- Closed-model runs cannot reveal saturation failures by construction; the open-model scenarios address this, but their breaking points are bounded by the configured arrival-rate ladder and `maxVus`.
+- Results should not be generalized beyond the tested setup without caution.

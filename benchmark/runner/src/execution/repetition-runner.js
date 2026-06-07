@@ -1,6 +1,15 @@
 const { prepareDatabaseState } = require("../db-preparer");
-const { createScenarioRuntime } = require("../workload/scenario-runtime");
-const { runAutocannon } = require("./run-autocannon");
+const { runK6 } = require("./run-k6");
+
+// Human-readable load label for run titles.
+// open -> rate=<req/s>, closed -> c=<vus>
+function formatLoad(experimentPoint) {
+  if (experimentPoint.loadModel === "open") {
+    return `rate=${experimentPoint.loadLevel}/s`;
+  }
+
+  return `c=${experimentPoint.loadLevel}`;
+}
 
 // Run one warmup repetition.
 // Warmup is used to stabilize the system before the measured runs start.
@@ -13,23 +22,11 @@ async function runWarmup({ target, experimentPoint }) {
     });
   }
 
-  // Create a fresh scenario runtime so request generation starts cleanly
-  // for this specific warmup repetition.
-  const scenarioRuntime = createScenarioRuntime({
-    scenario: experimentPoint.scenario,
-    state: {
-      ...experimentPoint.state,
-      name: experimentPoint.stateName
-    }
-  });
-
-  // Run autocannon with the warmup duration.
-  return await runAutocannon({
+  return runK6({
     baseUrl: target.baseUrl,
-    concurrency: experimentPoint.concurrency,
+    experimentPoint,
     durationSeconds: experimentPoint.warmupDurationSeconds,
-    scenarioRuntime,
-    title: `[WARMUP] ${experimentPoint.scenarioId} | state=${experimentPoint.stateName} | c=${experimentPoint.concurrency}`
+    title: `[WARMUP] ${experimentPoint.scenarioId} | state=${experimentPoint.stateName} | ${formatLoad(experimentPoint)}`
   });
 }
 
@@ -44,23 +41,11 @@ async function runMeasuredRepetition({ target, experimentPoint, repetitionNumber
     });
   }
 
-  // Create a fresh scenario runtime for this measured repetition.
-  // This keeps workload generation consistent and isolated per run.
-  const scenarioRuntime = createScenarioRuntime({
-    scenario: experimentPoint.scenario,
-    state: {
-      ...experimentPoint.state,
-      name: experimentPoint.stateName
-    }
-  });
-
-  // Run autocannon with the measured duration.
-  return await runAutocannon({
+  return runK6({
     baseUrl: target.baseUrl,
-    concurrency: experimentPoint.concurrency,
+    experimentPoint,
     durationSeconds: experimentPoint.measuredDurationSeconds,
-    scenarioRuntime,
-    title: `[RUN ${repetitionNumber}] ${experimentPoint.scenarioId} | state=${experimentPoint.stateName} | c=${experimentPoint.concurrency}`
+    title: `[RUN ${repetitionNumber}] ${experimentPoint.scenarioId} | state=${experimentPoint.stateName} | ${formatLoad(experimentPoint)}`
   });
 }
 
@@ -69,7 +54,6 @@ async function runRepetitions({ target, experimentPoint }) {
   const warmupResults = [];
   const measuredResults = [];
 
-  // Execute warmup runs first.
   for (let warmupIndex = 1; warmupIndex <= experimentPoint.warmupRuns; warmupIndex += 1) {
     const warmupResult = await runWarmup({
       target,
@@ -79,7 +63,6 @@ async function runRepetitions({ target, experimentPoint }) {
     warmupResults.push(warmupResult);
   }
 
-  // Execute measured runs afterwards.
   for (
     let repetitionNumber = 1;
     repetitionNumber <= experimentPoint.measuredRuns;
