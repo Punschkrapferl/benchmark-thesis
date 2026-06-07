@@ -13,6 +13,8 @@ All backends share the same HTTP API contract, the same PostgreSQL schema, and t
 
 > This is an **end-to-end backend benchmark** (request parsing → validation → application logic → database access → serialization), not an isolated framework-overhead microbenchmark. The persistence layer is held constant across implementations and is part of the measured path.
 
+> This README is the overview. **In-depth documentation lives in the [`docs/`](docs) folder** — the full technical reference, fairness contract, and diagram sources. See [Documentation](#documentation) below.
+
 ---
 
 ## What it measures
@@ -235,6 +237,14 @@ error_rate, dropped_iteration_rate
 
 ---
 
-## License
+## License and academic integrity
 
-This project was developed as part of a bachelor thesis. See repository settings for license details.
+Copyright (c) 2026 [Author Name]. **All rights reserved.**
+
+This repository is the work product of a bachelor thesis submitted at Technische Hochschule Ulm (THU). It is published solely for the **transparency and reproducibility** of the thesis results.
+
+**No open-source license is granted.** No part of this repository — including the source code, the benchmark methodology, the documentation, the diagrams, and the measured results — may be copied, reproduced, modified, redistributed, or reused, in whole or in part, without the prior **written permission** of the author.
+
+Submitting this work, or any derivative of it, as your own academic work constitutes **plagiarism** and a violation of academic integrity. Reusing it without attribution infringes the author's **intellectual property rights**.
+
+You may view the repository and cite it with proper attribution. For any other use, contact the author.
