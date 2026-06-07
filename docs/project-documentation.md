@@ -111,20 +111,20 @@ Implemented in `benchmark/runner/src/target-resolver.js`. Parity scripts and man
 ```mermaid
 flowchart TD
     Start([Start run]) --> CLI[Parse CLI args]
-    CLI --> Load[Load + validate configuration]
-    Load --> Resolve[Resolve target backend URL]
-    Resolve --> Expand[Expand experiment matrix<br/>scenario × state × load level]
-    Expand --> Filter[Apply optional filters]
-    Filter --> Loop{More experiment points?}
-    Loop -->|Yes| Rep{More repetitions?<br/>1 warmup + 5 measured}
-    Rep -->|Yes| Reset[Postgres: reset + seed data state]
-    Reset --> K6[k6: generate load<br/>warmup 30s / measured 60s]
-    K6 --> Collect[Runner: collect repetition result]
+    CLI --> Load[Load and validate<br/>configuration]
+    Load --> Resolve[Resolve target<br/>backend URL]
+    Resolve --> Expand[Expand experiment matrix<br/>scenario x state x load level]
+    Expand --> Filter[Apply optional<br/>filters]
+    Filter --> Loop{More experiment<br/>points?}
+    Loop -->|Yes| Rep{More repetitions?<br/>1 warmup<br/>5 measured}
+    Rep -->|Yes| Reset[Postgres:<br/>reset and seed<br/>data state]
+    Reset --> K6[k6: generate load<br/>warmup 30s<br/>measured 60s]
+    K6 --> Collect[Runner: collect<br/>repetition result]
     Collect --> Rep
-    Rep -->|No| Extract[Extract metrics:<br/>throughput · p50/p90/p99 · error · dropped]
-    Extract --> Aggregate[Aggregate:<br/>median performance · max failure]
+    Rep -->|No| Extract[Extract metrics<br/>throughput<br/>p50 / p90 / p99<br/>error · dropped]
+    Extract --> Aggregate[Aggregate<br/>median for performance<br/>max for failures]
     Aggregate --> Loop
-    Loop -->|No| Write[Write result files]
+    Loop -->|No| Write[Write result<br/>files]
     Write --> End([End])
 ```
 
