@@ -15,7 +15,7 @@ where they influence throughput, latency, or database load.
 | Seed states | `db/seed/states/*.sql` | empty / small / medium / large |
 | Reset | `TRUNCATE TABLE todos RESTART IDENTITY` | Before each benchmark run when policy requires it |
 
-## CPU budget (production-style, Option B)
+## CPU budget (production-style)
 
 Benchmarks run on one machine at a time (one backend under test + shared Postgres + k6).
 Docker CPU limits keep the load generator from starving:
@@ -71,7 +71,7 @@ Parity scripts verify this contract against Express (via published host ports).
 | ------- | ------- |
 | Express | `NODE_ENV=production` |
 | ASP.NET | `ASPNETCORE_ENVIRONMENT=Production` |
-| Spring Boot | Default Spring Boot production profile via container image |
+| Spring Boot | Production runtime settings (tuned Hikari pool, no dev tooling) |
 | FastAPI | No dev docs (`docs_url=None`) |
 
 ## Load generator

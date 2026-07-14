@@ -1,6 +1,6 @@
 # Project Documentation
 
-This document is the detailed technical reference for the backend benchmarking framework. It is intentionally more detailed than the top-level [`README.md`](../README.md) and serves as the main thesis-writing reference: methodology, architecture, configuration, load models, parity verification, fairness contract, result format, design decisions, and limitations.
+This document is the detailed technical reference for the backend benchmarking framework. It is intentionally more detailed than the top-level [`README.md`](../README.md) and is the main technical reference for the project: methodology, architecture, configuration, load models, parity verification, fairness contract, result format, design decisions, and limitations.
 
 ---
 
@@ -23,7 +23,7 @@ This document is the detailed technical reference for the backend benchmarking f
 15. [Result Processing and Aggregation](#15-result-processing-and-aggregation)
 16. [Result Output](#16-result-output)
 17. [API Parity Verification](#17-api-parity-verification)
-18. [Fairness Contract (Option B)](#18-fairness-contract-option-b)
+18. [Fairness Contract](#18-fairness-contract)
 19. [Containerization and the Dockerized Load Generator](#19-containerization-and-the-dockerized-load-generator)
 20. [Express Backend Example](#20-express-backend-example)
 21. [Environment Preparation and Execution Rules](#21-environment-preparation-and-execution-rules)
@@ -75,7 +75,7 @@ graph TB
     subgraph Docker["Docker — benchmark-net"]
         K6["k6 Load Generator<br/>(2 CPU)"]
         Backend["Backend Under Test (4 CPU)<br/>Express | Spring Boot | ASP.NET | FastAPI"]
-        PG[("PostgreSQL<br/>2 CPU · 20-conn pool")]
+        PG[("PostgreSQL<br/>2 CPU · 20 conns/backend")]
     end
     Config -->|provides config| Runner
     Runner -->|spawns docker run| K6
@@ -87,7 +87,7 @@ graph TB
     Backend -->|SQL/TCP| PG
 ```
 
-Editable diagram sources (PlantUML + Mermaid) are in [`docs/diagrams/`](diagrams).
+The Mermaid diagrams above render inline; the editable PlantUML sources for the thesis figures are in [`docs/diagrams/`](diagrams).
 
 ---
 
@@ -443,7 +443,7 @@ Parity scripts verify **HTTP behavior only**. CPU limits, worker counts, and poo
 
 ---
 
-## 18. Fairness Contract (Option B)
+## 18. Fairness Contract
 
 To keep the comparison fair, every backend runs under the same production-style runtime budget, documented in [`docs/benchmark-fairness.md`](benchmark-fairness.md) and verified by `scripts/verify-benchmark-fairness.sh`.
 
@@ -456,7 +456,7 @@ To keep the comparison fair, every backend runs under the same production-style 
 | Network | `benchmark-net` (container-to-container) |
 | Load generator image | `grafana/k6:2.0.0` |
 
-Pool composition: Express and FastAPI run 4 workers × 5 connections; Spring Boot (Hikari) and ASP.NET use a single 20-connection pool. Production runtime flags are set per backend (`NODE_ENV=production`, `ASPNETCORE_ENVIRONMENT=Production`, FastAPI without dev docs, Spring Boot production profile).
+Pool composition: Express and FastAPI run 4 workers × 5 connections; Spring Boot (Hikari) and ASP.NET use a single 20-connection pool. Production runtime flags are set per backend (`NODE_ENV=production`, `ASPNETCORE_ENVIRONMENT=Production`, FastAPI without dev docs, Spring Boot production runtime settings — tuned Hikari pool, no dev tooling).
 
 `verify-benchmark-fairness.sh [backend|all]` checks: container `NanoCpus`, worker/process counts, pool environment/config, `benchmark-net` membership, Postgres CPU, and the presence of the k6 image. It runs in seconds and should be run after every `docker compose up --build`.
 

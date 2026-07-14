@@ -2,7 +2,7 @@
 
 # Benchmark fairness preflight.
 #
-# Verifies that the runtime setup matches the Option B fairness contract
+# Verifies that the runtime setup matches the fairness contract
 # documented in docs/benchmark-fairness.md, so cross-backend comparisons are
 # valid. This is operational verification (CPU limits, worker counts, pool
 # sizes, network, load generator) and is intentionally separate from the HTTP

@@ -16,7 +16,7 @@ package "Host machine (macOS, Apple Silicon)" {
   package "Docker — network: benchmark-net" {
     component "k6 Load Generator\n(container, 2 CPU)" as K6
     component "Backend Under Test\n(container, 4 CPU)\nExpress | Spring Boot |\nASP.NET | FastAPI" as Backend
-    database "PostgreSQL\n(container, 2 CPU,\n20-connection pool)" as PG
+    database "PostgreSQL\n(container, 2 CPU,\n20 conns/backend)" as PG
   }
 }
 

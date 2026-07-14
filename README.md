@@ -39,7 +39,7 @@ graph TB
     subgraph Docker["Docker — benchmark-net"]
         K6["k6 Load Generator<br/>(2 CPU)"]
         Backend["Backend Under Test (4 CPU)<br/>Express | Spring Boot | ASP.NET | FastAPI"]
-        PG[("PostgreSQL<br/>2 CPU · 20-conn pool")]
+        PG[("PostgreSQL<br/>2 CPU · 20 conns/backend")]
     end
     Config -->|provides config| Runner
     Runner -->|spawns docker run| K6
@@ -73,11 +73,11 @@ flowchart TD
     Write --> End([End])
 ```
 
-Editable diagram sources (PlantUML + Mermaid) live in [`docs/diagrams/`](docs/diagrams).
+The Mermaid diagrams above render inline on GitHub; the editable PlantUML sources for the thesis figures live in [`docs/diagrams/`](docs/diagrams).
 
 ---
 
-## Fairness contract (Option B)
+## Fairness contract
 
 To keep the comparison fair, every backend runs under the same production-style runtime budget. The full contract is documented in [`docs/benchmark-fairness.md`](docs/benchmark-fairness.md) and verified by a preflight script.
 
@@ -231,7 +231,7 @@ error_rate, dropped_iteration_rate
 
 ## Documentation
 
-- [`docs/project-documentation.md`](docs/project-documentation.md) — detailed technical reference and thesis-writing notes
+- [`docs/project-documentation.md`](docs/project-documentation.md) — detailed technical reference
 - [`docs/benchmark-fairness.md`](docs/benchmark-fairness.md) — the full fairness contract and load-model definitions
 - [`docs/diagrams/`](docs/diagrams) — architecture and execution diagram sources
 
@@ -239,7 +239,7 @@ error_rate, dropped_iteration_rate
 
 ## License and academic integrity
 
-Copyright (c) 2026 [Author Name]. **All rights reserved.**
+Copyright (c) 2026 Punschkrapferl. **All rights reserved.**
 
 This repository is the work product of a bachelor thesis submitted at Technische Hochschule Ulm (THU). It is published solely for the **transparency and reproducibility** of the thesis results.
 
